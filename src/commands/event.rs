@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use crate::api::HassClient;
 use crate::cli::{EventCommand, OutputFormat};
 use crate::config::RuntimeContext;
-use crate::output::{output_for_format, parse_json_input};
+use crate::output::{get_json_input, output_for_format};
 use crate::websocket;
 
 pub async fn run(ctx: &RuntimeContext, command: EventCommand) -> Result<()> {
@@ -66,11 +66,10 @@ async fn watch(ctx: &RuntimeContext, event_type: Option<&str>) -> Result<()> {
 async fn fire(ctx: &RuntimeContext, event_type: &str, json_input: Option<&str>) -> Result<()> {
     let client = HassClient::new(ctx)?;
 
-    let data = if let Some(json_str) = json_input {
-        parse_json_input(json_str).context("parsing JSON input")?
-    } else {
-        serde_json::json!({})
-    };
+    // Build data: prefer explicit --json, then piped stdin, otherwise empty object
+    let data = get_json_input(json_input)
+        .context("parsing JSON input")?
+        .unwrap_or_else(|| serde_json::json!({}));
 
     log::debug!("Firing event {} with data: {:?}", event_type, data);
 

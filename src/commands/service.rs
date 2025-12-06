@@ -8,7 +8,7 @@ use crate::api::HassClient;
 use crate::cli::ServiceCommand;
 use crate::config::RuntimeContext;
 use crate::output::{
-    output_for_format, parse_json_input, parse_key_value_args, print_table, truncate,
+    get_json_input, output_for_format, parse_key_value_args, print_table, truncate,
 };
 
 #[derive(Debug, Tabled, Serialize)]
@@ -82,9 +82,9 @@ async fn call(
         )
     })?;
 
-    // Build service data
-    let data = if let Some(json_str) = json_input {
-        parse_json_input(json_str).context("parsing JSON input")?
+    // Build service data: prefer explicit --json, then key=value args, then piped stdin
+    let data = if let Some(json_value) = get_json_input(json_input).context("parsing JSON input")? {
+        json_value
     } else if !args.is_empty() {
         parse_key_value_args(args).context("parsing key=value arguments")?
     } else {

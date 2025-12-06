@@ -11,7 +11,7 @@ use tabled::Tabled;
 use crate::api::{EntityState, HassClient};
 use crate::cli::{EntityCommand, OutputFormat};
 use crate::config::RuntimeContext;
-use crate::output::{output_for_format, parse_json_input, print_output, print_table};
+use crate::output::{get_json_input, output_for_format, print_output, print_table};
 use crate::websocket;
 
 #[derive(Debug, Tabled, Serialize)]
@@ -131,12 +131,13 @@ async fn set(
 ) -> Result<()> {
     let client = HassClient::new(ctx)?;
 
-    let data = if let Some(json_str) = json_input {
-        parse_json_input(json_str).context("parsing JSON input")?
+    // Build data: prefer explicit --json, then --state, then piped stdin
+    let data = if let Some(json_value) = get_json_input(json_input).context("parsing JSON input")? {
+        json_value
     } else if let Some(state) = state_input {
         json!({ "state": state })
     } else {
-        anyhow::bail!("Either --json or --state must be provided");
+        anyhow::bail!("Either --json, --state, or piped JSON input must be provided");
     };
 
     let result = client.set_state(entity_id, &data).await?;

@@ -26,8 +26,18 @@ pub struct Cli {
 #[derive(Debug, Clone, Args)]
 pub struct GlobalOpts {
     /// Output format (json, yaml, table, auto)
-    #[arg(short = 'o', long = "output", value_enum, global = true)]
+    #[arg(
+        short = 'o',
+        long = "output",
+        value_enum,
+        global = true,
+        conflicts_with = "json"
+    )]
     pub output_format: Option<OutputFormat>,
+
+    /// Output as JSON (shorthand for -o json)
+    #[arg(long, global = true)]
+    pub json: bool,
 
     /// Home Assistant server URL
     #[arg(short = 's', long, env = "HASS_SERVER", global = true)]
@@ -282,9 +292,9 @@ pub enum DeviceCommand {
         /// Device ID
         device_id: String,
 
-        /// JSON data for device update
-        #[arg(long, value_name = "JSON", required = true)]
-        json: String,
+        /// JSON data for device update (can also be piped via stdin)
+        #[arg(long, value_name = "JSON")]
+        json: Option<String>,
     },
 }
 

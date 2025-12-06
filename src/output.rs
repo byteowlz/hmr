@@ -1,10 +1,10 @@
 //! Output formatting utilities
 //!
-//! Handles JSON, YAML, and table output formats.
+//! Handles JSON, YAML, and table output formats, as well as stdin piping support.
 
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Read};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::Serialize;
 use tabled::{settings::Style, Table, Tabled};
 
@@ -93,13 +93,51 @@ fn build_table<T: Tabled + Serialize>(ctx: &RuntimeContext, items: &[T]) -> Tabl
     table
 }
 
+/// Read JSON from stdin. Returns None if stdin is a terminal (no piped data).
+pub fn read_stdin_json() -> Result<Option<serde_json::Value>> {
+    if std::io::stdin().is_terminal() {
+        return Ok(None);
+    }
+
+    let mut buffer = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buffer)
+        .context("reading from stdin")?;
+
+    let trimmed = buffer.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    let value = serde_json::from_str(trimmed).context("parsing JSON from stdin")?;
+    Ok(Some(value))
+}
+
+/// Read raw data from stdin. Returns None if stdin is a terminal.
+pub fn read_stdin() -> Result<Option<String>> {
+    if std::io::stdin().is_terminal() {
+        return Ok(None);
+    }
+
+    let mut buffer = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buffer)
+        .context("reading from stdin")?;
+
+    let trimmed = buffer.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(trimmed.to_string()))
+}
+
 /// Parse JSON input from various sources (inline, file, stdin)
 pub fn parse_json_input(input: &str) -> Result<serde_json::Value> {
     let input = input.trim();
 
     // Check for stdin indicator
     if input == "-" {
-        use std::io::Read;
         let mut buffer = String::new();
         std::io::stdin().read_to_string(&mut buffer)?;
         return Ok(serde_json::from_str(&buffer)?);
@@ -113,6 +151,23 @@ pub fn parse_json_input(input: &str) -> Result<serde_json::Value> {
 
     // Parse as inline JSON
     Ok(serde_json::from_str(input)?)
+}
+
+/// Get JSON input, preferring the explicit argument but falling back to stdin.
+///
+/// This allows commands to accept JSON input via:
+/// - Explicit --json argument
+/// - Piped stdin (e.g., `echo '{"state": "on"}' | hmr entity set light.kitchen`)
+/// - "-" to explicitly read from stdin
+/// - "@file.json" to read from a file
+pub fn get_json_input(explicit: Option<&str>) -> Result<Option<serde_json::Value>> {
+    // If explicit input is provided, use it
+    if let Some(input) = explicit {
+        return Ok(Some(parse_json_input(input)?));
+    }
+
+    // Otherwise, try to read from stdin if data is piped
+    read_stdin_json()
 }
 
 /// Parse key=value pairs into a JSON object

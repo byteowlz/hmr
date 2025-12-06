@@ -134,6 +134,11 @@ impl RuntimeContext {
 
     /// Get the effective output format
     pub fn output_format(&self) -> OutputFormat {
+        // --json flag takes precedence as a shorthand
+        if self.global.json {
+            return OutputFormat::Json;
+        }
+
         self.global
             .output_format
             .unwrap_or(match self.config.output.format.as_str() {

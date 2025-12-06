@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use crate::api::HassClient;
 use crate::cli::TemplateCommand;
 use crate::config::RuntimeContext;
+use crate::output::read_stdin;
 
 pub async fn run(ctx: &RuntimeContext, cmd: TemplateCommand) -> Result<()> {
     let client = HassClient::new(ctx)?;
@@ -18,12 +19,11 @@ pub async fn run(ctx: &RuntimeContext, cmd: TemplateCommand) -> Result<()> {
         template_str.clone()
     } else {
         // Read from stdin
-        use std::io::Read;
-        let mut buffer = String::new();
-        std::io::stdin()
-            .read_to_string(&mut buffer)
-            .context("reading template from stdin")?;
-        buffer
+        read_stdin()?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "No template provided. Use a template argument, --file, or pipe via stdin"
+            )
+        })?
     };
 
     let result = client.render_template(&template).await?;

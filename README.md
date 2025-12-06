@@ -133,6 +133,7 @@ hmr completions fish > ~/.config/fish/completions/hmr.fish
 | Option | Description |
 |--------|-------------|
 | `-o, --output <FORMAT>` | Output format: `json`, `yaml`, `table`, `auto` |
+| `--json` | Output as JSON (shorthand for `-o json`) |
 | `-s, --server <URL>` | Home Assistant server URL |
 | `--token <TOKEN>` | Authentication token |
 | `--timeout <SECONDS>` | Request timeout |
@@ -146,6 +147,54 @@ hmr completions fish > ~/.config/fish/completions/hmr.fish
 | `--columns <COLS>` | Custom table columns (comma-separated) |
 | `--no-headers` | Hide table headers |
 | `--sort-by <FIELD>` | Sort table output by field |
+
+## Piping and Scripting
+
+hmr supports Unix-style piping for both input and output.
+
+### JSON Input
+
+Commands that accept JSON data can read from stdin when piped:
+
+```bash
+# Pipe JSON data to service call
+echo '{"entity_id": "light.kitchen", "brightness": 255}' | hmr service call light.turn_on
+
+# Pipe entity state update
+cat state.json | hmr entity set light.kitchen
+
+# Use jq to transform and pipe data
+hmr entity get sensor.temperature --json | jq '.attributes' | hmr event fire my_event
+```
+
+JSON input can also be provided via:
+- `--json '{"key": "value"}'` - inline JSON
+- `--json @file.json` - read from file
+- `--json -` - explicitly read from stdin
+
+### JSON Output
+
+When piped to another command, hmr automatically outputs compact JSON (with `auto` format):
+
+```bash
+# Pipe entity list to jq
+hmr entity list | jq '.[].entity_id'
+
+# Chain with other tools
+hmr entity list --json | jq -r '.[] | select(.state == "on") | .entity_id'
+
+# Explicit JSON output with --json flag
+hmr entity get light.kitchen --json
+```
+
+### Template Piping
+
+Templates can be piped via stdin:
+
+```bash
+echo '{{ states("light.kitchen") }}' | hmr template
+cat complex_template.j2 | hmr template
+```
 
 ## Development
 
