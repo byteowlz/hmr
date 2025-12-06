@@ -54,9 +54,9 @@ pub async fn run(ctx: &RuntimeContext, command: EntityCommand) -> Result<()> {
         EntityCommand::Get { entity_id } => get(ctx, &entity_id).await,
         EntityCommand::Set {
             entity_id,
-            json,
+            data,
             state,
-        } => set(ctx, &entity_id, json.as_deref(), state.as_deref()).await,
+        } => set(ctx, &entity_id, data.as_deref(), state.as_deref()).await,
         EntityCommand::History { entity_id, since } => history(ctx, &entity_id, &since).await,
         EntityCommand::Watch { entity_ids } => watch(ctx, &entity_ids).await,
     }
@@ -126,24 +126,72 @@ async fn get(ctx: &RuntimeContext, entity_id: &str) -> Result<()> {
 async fn set(
     ctx: &RuntimeContext,
     entity_id: &str,
-    json_input: Option<&str>,
+    data_input: Option<&str>,
     state_input: Option<&str>,
 ) -> Result<()> {
     let client = HassClient::new(ctx)?;
 
-    // Build data: prefer explicit --json, then --state, then piped stdin
-    let data = if let Some(json_value) = get_json_input(json_input).context("parsing JSON input")? {
+    // Build data: prefer explicit --data, then --state, then piped stdin
+    let data = if let Some(json_value) = get_json_input(data_input).context("parsing JSON input")? {
         json_value
     } else if let Some(state) = state_input {
         json!({ "state": state })
     } else {
-        anyhow::bail!("Either --json, --state, or piped JSON input must be provided");
+        anyhow::bail!("Either --data, --state, or piped JSON input must be provided");
     };
 
+    // For controllable entities (lights, switches, etc.), use service calls instead of direct state updates
+    // Direct state updates only modify the state database without triggering device actions
+    if let Some(state_str) = state_input {
+        if let Some((domain, service_name)) = map_state_to_service(entity_id, state_str) {
+            log::debug!(
+                "Using service call {}.{} instead of direct state update",
+                domain,
+                service_name
+            );
+
+            let service_data = json!({ "entity_id": entity_id });
+            let result = client
+                .call_service(&domain, &service_name, &service_data)
+                .await?;
+            print_output(ctx, &result)?;
+            return Ok(());
+        }
+    }
+
+    // Fall back to direct state update for non-controllable entities (sensors, etc.)
+    log::debug!("Using direct state update for {}", entity_id);
     let result = client.set_state(entity_id, &data).await?;
     print_output(ctx, &result)?;
 
     Ok(())
+}
+
+/// Maps entity_id domain and desired state to the appropriate service call.
+/// Returns (domain, service_name) if a service call should be used, None otherwise.
+fn map_state_to_service(entity_id: &str, desired_state: &str) -> Option<(String, String)> {
+    let domain = entity_id.split('.').next()?;
+    let state_lower = desired_state.to_lowercase();
+
+    match domain {
+        "light" | "switch" | "fan" | "cover" | "lock" | "media_player" => {
+            let service = match state_lower.as_str() {
+                "on" | "true" | "1" => "turn_on",
+                "off" | "false" | "0" => "turn_off",
+                "toggle" => "toggle",
+                "open" if domain == "cover" => "open_cover",
+                "close" | "closed" if domain == "cover" => "close_cover",
+                "lock" | "locked" if domain == "lock" => "lock",
+                "unlock" | "unlocked" if domain == "lock" => "unlock",
+                "play" if domain == "media_player" => "media_play",
+                "pause" if domain == "media_player" => "media_pause",
+                "stop" if domain == "media_player" => "media_stop",
+                _ => return None,
+            };
+            Some((domain.to_string(), service.to_string()))
+        }
+        _ => None, // Sensors and other non-controllable entities use direct state updates
+    }
 }
 
 async fn history(ctx: &RuntimeContext, entity_id: &str, since: &str) -> Result<()> {
@@ -239,5 +287,76 @@ mod tests {
         assert_eq!(row.entity_id, "light.kitchen");
         assert_eq!(row.state, "on");
         assert_eq!(row.friendly_name, "Kitchen Light");
+    }
+
+    #[test]
+    fn test_map_state_to_service_light() {
+        assert_eq!(
+            map_state_to_service("light.kitchen", "on"),
+            Some(("light".to_string(), "turn_on".to_string()))
+        );
+        assert_eq!(
+            map_state_to_service("light.bedroom", "off"),
+            Some(("light".to_string(), "turn_off".to_string()))
+        );
+        assert_eq!(
+            map_state_to_service("light.spots", "toggle"),
+            Some(("light".to_string(), "toggle".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_map_state_to_service_switch() {
+        assert_eq!(
+            map_state_to_service("switch.outlet", "on"),
+            Some(("switch".to_string(), "turn_on".to_string()))
+        );
+        assert_eq!(
+            map_state_to_service("switch.outlet", "off"),
+            Some(("switch".to_string(), "turn_off".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_map_state_to_service_cover() {
+        assert_eq!(
+            map_state_to_service("cover.garage", "open"),
+            Some(("cover".to_string(), "open_cover".to_string()))
+        );
+        assert_eq!(
+            map_state_to_service("cover.garage", "close"),
+            Some(("cover".to_string(), "close_cover".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_map_state_to_service_lock() {
+        assert_eq!(
+            map_state_to_service("lock.front_door", "lock"),
+            Some(("lock".to_string(), "lock".to_string()))
+        );
+        assert_eq!(
+            map_state_to_service("lock.front_door", "unlock"),
+            Some(("lock".to_string(), "unlock".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_map_state_to_service_sensor() {
+        // Sensors are not controllable, should return None
+        assert_eq!(map_state_to_service("sensor.temperature", "25"), None);
+        assert_eq!(map_state_to_service("binary_sensor.motion", "on"), None);
+    }
+
+    #[test]
+    fn test_map_state_to_service_case_insensitive() {
+        assert_eq!(
+            map_state_to_service("light.kitchen", "ON"),
+            Some(("light".to_string(), "turn_on".to_string()))
+        );
+        assert_eq!(
+            map_state_to_service("light.kitchen", "Off"),
+            Some(("light".to_string(), "turn_off".to_string()))
+        );
     }
 }

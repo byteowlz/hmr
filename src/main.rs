@@ -14,12 +14,20 @@ use std::io::{self, Write};
 use std::process::ExitCode;
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 
 use crate::cli::{Cli, Command};
 use crate::config::RuntimeContext;
 
 fn main() -> ExitCode {
+    // Reset SIGPIPE to default behavior to avoid panics on broken pipes
+    // This prevents the "failed printing to stdout: Broken pipe" panic when
+    // piping output to commands that don't read all the data (e.g., `hmr config path | cd`)
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     match try_main() {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
@@ -31,6 +39,13 @@ fn main() -> ExitCode {
 
 fn try_main() -> Result<()> {
     let cli = Cli::parse();
+
+    // If no command is provided, print help and exit
+    let Some(command) = cli.command else {
+        let _ = Cli::command().print_help();
+        return Ok(());
+    };
+
     let ctx = RuntimeContext::new(&cli.global)?;
     ctx.init_logging()?;
 
@@ -40,7 +55,7 @@ fn try_main() -> Result<()> {
         .enable_all()
         .build()?;
 
-    runtime.block_on(run_command(&ctx, cli.command))
+    runtime.block_on(run_command(&ctx, command))
 }
 
 async fn run_command(ctx: &RuntimeContext, command: Command) -> Result<()> {

@@ -11,7 +11,7 @@ use crate::websocket;
 pub async fn run(ctx: &RuntimeContext, command: EventCommand) -> Result<()> {
     match command {
         EventCommand::Watch { event_type } => watch(ctx, event_type.as_deref()).await,
-        EventCommand::Fire { event_type, json } => fire(ctx, &event_type, json.as_deref()).await,
+        EventCommand::Fire { event_type, data } => fire(ctx, &event_type, data.as_deref()).await,
     }
 }
 
@@ -63,11 +63,11 @@ async fn watch(ctx: &RuntimeContext, event_type: Option<&str>) -> Result<()> {
     .await
 }
 
-async fn fire(ctx: &RuntimeContext, event_type: &str, json_input: Option<&str>) -> Result<()> {
+async fn fire(ctx: &RuntimeContext, event_type: &str, data_input: Option<&str>) -> Result<()> {
     let client = HassClient::new(ctx)?;
 
-    // Build data: prefer explicit --json, then piped stdin, otherwise empty object
-    let data = get_json_input(json_input)
+    // Build data: prefer explicit --data, then piped stdin, otherwise empty object
+    let data = get_json_input(data_input)
         .context("parsing JSON input")?
         .unwrap_or_else(|| serde_json::json!({}));
 

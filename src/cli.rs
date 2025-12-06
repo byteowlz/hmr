@@ -19,7 +19,7 @@ pub struct Cli {
     #[command(flatten)]
     pub global: GlobalOpts,
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 }
 
 /// Global options available to all commands
@@ -172,8 +172,8 @@ pub enum EntityCommand {
         entity_id: String,
 
         /// JSON data for state and attributes
-        #[arg(long, value_name = "JSON", conflicts_with = "state")]
-        json: Option<String>,
+        #[arg(long = "data", value_name = "JSON", conflicts_with = "state")]
+        data: Option<String>,
 
         /// Quick state update
         #[arg(long)]
@@ -212,8 +212,8 @@ pub enum ServiceCommand {
         service: String,
 
         /// JSON data for service call
-        #[arg(long, value_name = "JSON")]
-        json: Option<String>,
+        #[arg(long = "data", value_name = "JSON")]
+        data: Option<String>,
 
         /// Key=value pairs for simple service calls
         #[arg(value_name = "KEY=VALUE")]
@@ -235,8 +235,8 @@ pub enum EventCommand {
         event_type: String,
 
         /// JSON data for event payload
-        #[arg(long, value_name = "JSON")]
-        json: Option<String>,
+        #[arg(long = "data", value_name = "JSON")]
+        data: Option<String>,
     },
 }
 
@@ -262,8 +262,8 @@ pub enum AreaCommand {
         name: String,
 
         /// JSON metadata for the area
-        #[arg(long, value_name = "JSON")]
-        json: Option<String>,
+        #[arg(long = "data", value_name = "JSON")]
+        data: Option<String>,
     },
 
     /// Delete an area
@@ -293,8 +293,8 @@ pub enum DeviceCommand {
         device_id: String,
 
         /// JSON data for device update (can also be piped via stdin)
-        #[arg(long, value_name = "JSON")]
-        json: Option<String>,
+        #[arg(long = "data", value_name = "JSON")]
+        data: Option<String>,
     },
 }
 

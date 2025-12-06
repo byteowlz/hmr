@@ -262,6 +262,103 @@ impl WsClient {
             }
         }
     }
+
+    /// Call an RPC method and wait for the result
+    ///
+    /// This sends a message to Home Assistant and waits for a response with matching ID.
+    /// Use this for registry operations like listing/creating/deleting areas and devices.
+    pub async fn call_rpc(&mut self, msg: &Value) -> Result<Value> {
+        let id = self.send(msg).await?;
+
+        // Wait for the response with matching ID
+        loop {
+            match self.receive().await? {
+                WsMessage::Result {
+                    id: result_id,
+                    success,
+                    result,
+                    error,
+                } if result_id == id => {
+                    if success {
+                        return Ok(result);
+                    }
+                    if let Some(err) = error {
+                        return Err(anyhow!("RPC call failed: {} ({})", err.message, err.code));
+                    }
+                    return Err(anyhow!("RPC call failed without error details"));
+                }
+                // Ignore other messages while waiting for our response
+                _ => continue,
+            }
+        }
+    }
+
+    /// List all areas from the area registry
+    pub async fn list_areas(&mut self) -> Result<Vec<Area>> {
+        let msg = json!({
+            "type": "config/area_registry/list"
+        });
+
+        let result = self.call_rpc(&msg).await?;
+        serde_json::from_value(result).context("parsing area list response")
+    }
+
+    /// Create a new area
+    pub async fn create_area(&mut self, request: &CreateAreaRequest) -> Result<Area> {
+        let msg = json!({
+            "type": "config/area_registry/create",
+            "name": request.name,
+            "picture": request.picture,
+            "aliases": request.aliases,
+            "icon": request.icon,
+            "floor_id": request.floor_id,
+        });
+
+        let result = self.call_rpc(&msg).await?;
+        serde_json::from_value(result).context("parsing created area response")
+    }
+
+    /// Delete an area by ID
+    pub async fn delete_area(&mut self, area_id: &str) -> Result<()> {
+        let msg = json!({
+            "type": "config/area_registry/delete",
+            "area_id": area_id
+        });
+
+        self.call_rpc(&msg).await?;
+        Ok(())
+    }
+
+    /// List all devices from the device registry
+    pub async fn list_devices(&mut self) -> Result<Vec<Device>> {
+        let msg = json!({
+            "type": "config/device_registry/list"
+        });
+
+        let result = self.call_rpc(&msg).await?;
+        serde_json::from_value(result).context("parsing device list response")
+    }
+
+    /// Update a device's metadata
+    pub async fn update_device(&mut self, request: &UpdateDeviceRequest) -> Result<Device> {
+        let mut msg = json!({
+            "type": "config/device_registry/update",
+            "device_id": request.device_id,
+        });
+
+        if let Some(area_id) = &request.area_id {
+            msg["area_id"] = json!(area_id);
+        }
+        if let Some(name_by_user) = &request.name_by_user {
+            msg["name_by_user"] = json!(name_by_user);
+        }
+        if let Some(disabled_by) = &request.disabled_by {
+            msg["disabled_by"] = json!(disabled_by);
+        }
+
+        let result = self.call_rpc(&msg).await?;
+        serde_json::from_value(result).context("parsing updated device response")
+    }
 }
 
 /// Run an event watch loop
@@ -407,5 +504,128 @@ mod tests {
             http_to_ws_url("wss://home.example.com"),
             "wss://home.example.com"
         );
+    }
+}
+
+// --- Area Registry Types ---
+
+/// Area information from Home Assistant area registry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Area {
+    pub area_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub picture: Option<String>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub floor_id: Option<String>,
+    #[serde(default)]
+    pub labels: Vec<String>,
+}
+
+/// Request to create a new area
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateAreaRequest {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aliases: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub floor_id: Option<String>,
+}
+
+impl CreateAreaRequest {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            picture: None,
+            aliases: None,
+            icon: None,
+            floor_id: None,
+        }
+    }
+}
+
+// --- Device Registry Types ---
+
+/// Device information from Home Assistant device registry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Device {
+    pub id: String,
+    #[serde(default)]
+    pub area_id: Option<String>,
+    #[serde(default)]
+    pub configuration_url: Option<String>,
+    #[serde(default)]
+    pub config_entries: Vec<String>,
+    #[serde(default)]
+    pub connections: Vec<(String, String)>,
+    #[serde(default)]
+    pub disabled_by: Option<String>,
+    #[serde(default)]
+    pub entry_type: Option<String>,
+    #[serde(default)]
+    pub hw_version: Option<String>,
+    #[serde(default)]
+    pub identifiers: Vec<(String, String)>,
+    #[serde(default)]
+    pub manufacturer: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub name_by_user: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub sw_version: Option<String>,
+    #[serde(default)]
+    pub via_device_id: Option<String>,
+    #[serde(default)]
+    pub labels: Vec<String>,
+}
+
+/// Request to update device metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateDeviceRequest {
+    pub device_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub area_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name_by_user: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disabled_by: Option<String>,
+}
+
+impl UpdateDeviceRequest {
+    pub fn new(device_id: String) -> Self {
+        Self {
+            device_id,
+            area_id: None,
+            name_by_user: None,
+            disabled_by: None,
+        }
+    }
+
+    pub fn with_area_id(mut self, area_id: String) -> Self {
+        self.area_id = Some(area_id);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_name(mut self, name: String) -> Self {
+        self.name_by_user = Some(name);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_disabled_by(mut self, disabled_by: Option<String>) -> Self {
+        self.disabled_by = disabled_by;
+        self
     }
 }

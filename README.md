@@ -1,4 +1,6 @@
-# hmr - homer, a home assistant CLI
+![banner](banner.png)
+
+# homer (hmr), a home assistant CLI
 
 A slim, fast CLI for Home Assistant.
 
@@ -52,11 +54,11 @@ Override with `--config <path>` or `HMR_CONFIG` env var.
 
 ### Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `HASS_SERVER` | Home Assistant server URL |
-| `HASS_TOKEN` | Long-lived access token |
-| `HMR__*` | Override any config value (e.g., `HMR__LOGGING__LEVEL=debug`) |
+| Variable      | Description                                                   |
+| ------------- | ------------------------------------------------------------- |
+| `HASS_SERVER` | Home Assistant server URL                                     |
+| `HASS_TOKEN`  | Long-lived access token                                       |
+| `HMR__*`      | Override any config value (e.g., `HMR__LOGGING__LEVEL=debug`) |
 
 ### Example Config
 
@@ -70,19 +72,25 @@ See `examples/config.toml` for a complete example with comments.
 hmr entity list                    # List all entities
 hmr entity list "light"            # Filter entities (fuzzy match)
 hmr entity get light.kitchen       # Get entity details
-hmr entity set light.kitchen --state on
+hmr entity set light.kitchen --state on  # Control devices (automatically calls appropriate service)
+hmr entity set switch.outlet --state off
+hmr entity set cover.garage --state open
 hmr entity history light.kitchen --since 2h
 hmr entity watch light.kitchen light.bedroom  # Real-time state changes
 ```
+
+The `entity set` command intelligently detects controllable entities (lights, switches, fans, covers, locks, media players) and automatically calls the appropriate Home Assistant service. This ensures the physical device is controlled and the state is updated. For sensors and other non-controllable entities, it updates the state directly.
 
 ### Service Calls
 
 ```bash
 hmr service list                   # List all services
 hmr service list light             # List services for a domain
-hmr service call light.turn_on target=light.kitchen brightness=255
-hmr service call light.turn_on --json '{"target": {"entity_id": "light.kitchen"}}'
+hmr service call light.turn_on entity_id=light.kitchen brightness=255
+hmr service call light.turn_on --json '{"entity_id": "light.kitchen", "brightness": 255}'
 ```
+
+Service calls directly invoke Home Assistant services, which both control the physical device and update the entity state.
 
 ### Events
 
@@ -130,23 +138,23 @@ hmr completions fish > ~/.config/fish/completions/hmr.fish
 
 ## Global Options
 
-| Option | Description |
-|--------|-------------|
-| `-o, --output <FORMAT>` | Output format: `json`, `yaml`, `table`, `auto` |
-| `--json` | Output as JSON (shorthand for `-o json`) |
-| `-s, --server <URL>` | Home Assistant server URL |
-| `--token <TOKEN>` | Authentication token |
-| `--timeout <SECONDS>` | Request timeout |
-| `--insecure` | Skip SSL certificate verification |
-| `--config <PATH>` | Override config file path |
-| `-q, --quiet` | Reduce output to errors only |
-| `-v, --verbose` | Increase verbosity (stackable: `-v`, `-vv`, `-vvv`) |
-| `--debug` | Enable debug logging |
-| `--trace` | Enable trace logging |
-| `--no-color` | Disable colored output |
-| `--columns <COLS>` | Custom table columns (comma-separated) |
-| `--no-headers` | Hide table headers |
-| `--sort-by <FIELD>` | Sort table output by field |
+| Option                  | Description                                         |
+| ----------------------- | --------------------------------------------------- |
+| `-o, --output <FORMAT>` | Output format: `json`, `yaml`, `table`, `auto`      |
+| `--json`                | Output as JSON (shorthand for `-o json`)            |
+| `-s, --server <URL>`    | Home Assistant server URL                           |
+| `--token <TOKEN>`       | Authentication token                                |
+| `--timeout <SECONDS>`   | Request timeout                                     |
+| `--insecure`            | Skip SSL certificate verification                   |
+| `--config <PATH>`       | Override config file path                           |
+| `-q, --quiet`           | Reduce output to errors only                        |
+| `-v, --verbose`         | Increase verbosity (stackable: `-v`, `-vv`, `-vvv`) |
+| `--debug`               | Enable debug logging                                |
+| `--trace`               | Enable trace logging                                |
+| `--no-color`            | Disable colored output                              |
+| `--columns <COLS>`      | Custom table columns (comma-separated)              |
+| `--no-headers`          | Hide table headers                                  |
+| `--sort-by <FIELD>`     | Sort table output by field                          |
 
 ## Piping and Scripting
 
@@ -168,6 +176,7 @@ hmr entity get sensor.temperature --json | jq '.attributes' | hmr event fire my_
 ```
 
 JSON input can also be provided via:
+
 - `--json '{"key": "value"}'` - inline JSON
 - `--json @file.json` - read from file
 - `--json -` - explicitly read from stdin

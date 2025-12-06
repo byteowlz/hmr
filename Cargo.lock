@@ -738,6 +738,7 @@ dependencies = [
  "futures-util",
  "fuzzy-matcher",
  "humantime",
+ "libc",
  "log",
  "reqwest",
  "serde",

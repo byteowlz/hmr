@@ -23,9 +23,9 @@ pub async fn run(ctx: &RuntimeContext, command: ServiceCommand) -> Result<()> {
         ServiceCommand::List { domain } => list(ctx, domain.as_deref()).await,
         ServiceCommand::Call {
             service,
-            json,
+            data,
             args,
-        } => call(ctx, &service, json.as_deref(), &args).await,
+        } => call(ctx, &service, data.as_deref(), &args).await,
     }
 }
 
@@ -70,7 +70,7 @@ async fn list(ctx: &RuntimeContext, domain_filter: Option<&str>) -> Result<()> {
 async fn call(
     ctx: &RuntimeContext,
     service: &str,
-    json_input: Option<&str>,
+    data_input: Option<&str>,
     args: &[String],
 ) -> Result<()> {
     let client = HassClient::new(ctx)?;
@@ -82,8 +82,8 @@ async fn call(
         )
     })?;
 
-    // Build service data: prefer explicit --json, then key=value args, then piped stdin
-    let data = if let Some(json_value) = get_json_input(json_input).context("parsing JSON input")? {
+    // Build service data: prefer explicit --data, then key=value args, then piped stdin
+    let data = if let Some(json_value) = get_json_input(data_input).context("parsing JSON input")? {
         json_value
     } else if !args.is_empty() {
         parse_key_value_args(args).context("parsing key=value arguments")?
