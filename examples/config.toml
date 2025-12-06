@@ -1,22 +1,48 @@
-# Example configuration for the template CLI.
-# Copy this file to $XDG_CONFIG_HOME/hmr/config.toml and adjust as needed.
+# hmr configuration example
+# Copy to $XDG_CONFIG_HOME/hmr/config.toml (e.g., ~/.config/hmr/config.toml)
+#
+# Environment variables take precedence over config file values:
+#   HASS_SERVER - Home Assistant server URL
+#   HASS_TOKEN  - Authentication token (recommended for security)
+#   HMR__*      - Override any config (e.g., HMR__LOGGING__LEVEL=debug)
 
-profile = "default"
+[homeassistant]
+# Home Assistant server URL
+server = "http://homeassistant.local:8123"
+
+# Long-lived access token (prefer HASS_TOKEN env var for security)
+# token = ""
+
+# Request timeout in seconds
+timeout = 30
+
+# Skip SSL certificate verification (use for self-signed certs)
+insecure = false
+
+# Path to client certificate (optional)
+# cert_path = ""
+
+[websocket]
+# Auto-reconnect for watch commands
+reconnect = true
+
+# Delay between reconnection attempts (seconds)
+reconnect_delay = 5
+
+# Maximum reconnection attempts (0 = infinite)
+max_reconnect_attempts = 0
+
+[output]
+# Default output format: auto, json, yaml, table
+# "auto" uses table for interactive terminals, json when piped
+format = "auto"
+
+# Table style: simple, ascii, markdown
+table_format = "simple"
+
+# Hide table headers
+no_headers = false
 
 [logging]
-# Valid levels: error, warn, info, debug, trace
-level = "info"
-# Optional path for log file output; supports ~ and environment variables.
-# file = "~/Library/Logs/hmr.log"
-
-[runtime]
-# Override the worker pool size; defaults to logical CPU count when unset.
-# parallelism = 8
-# Timeout in seconds for long-running operations.
-timeout = 60
-fail_fast = true
-
-[paths]
-# Uncomment to move persistent data/state to custom directories.
-# data_dir = "$XDG_DATA_HOME/hmr"
-# state_dir = "$XDG_STATE_HOME/hmr"
+# Log level: trace, debug, info, warn, error
+level = "warn"
