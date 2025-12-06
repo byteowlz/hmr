@@ -2,11 +2,14 @@
 //!
 //! Handles real-time event streaming and entity watching.
 
+use std::borrow::Cow;
+
 use anyhow::{anyhow, Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::config::RuntimeContext;
@@ -15,6 +18,7 @@ use crate::config::RuntimeContext;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum WsMessage {
     AuthRequired {
         ha_version: String,
@@ -64,6 +68,10 @@ pub struct WsClient {
     sender: mpsc::Sender<String>,
     receiver: mpsc::Receiver<WsMessage>,
     msg_id: u64,
+    /// Handle to the sender task for error detection
+    send_task: JoinHandle<()>,
+    /// Handle to the receiver task for error detection
+    recv_task: JoinHandle<()>,
 }
 
 impl WsClient {
@@ -73,9 +81,7 @@ impl WsClient {
         let token = ctx.token()?.to_string();
 
         // Convert HTTP URL to WebSocket URL
-        let ws_url = server_url
-            .replace("http://", "ws://")
-            .replace("https://", "wss://");
+        let ws_url = http_to_ws_url(server_url);
         let ws_url = format!("{}/api/websocket", ws_url.trim_end_matches('/'));
 
         log::debug!("Connecting to WebSocket: {}", ws_url);
@@ -87,37 +93,54 @@ impl WsClient {
 
         let (mut write, mut read) = ws_stream.split();
 
-        // Create channels for communication
+        // Create channels for communication.
+        // The bounded channels provide natural backpressure - if events arrive faster
+        // than they can be processed, the sender will block until space is available.
+        // This prevents unbounded memory growth at the cost of potentially dropping
+        // the WebSocket connection if the receiver is too slow.
         let (tx_send, mut rx_send) = mpsc::channel::<String>(32);
         let (tx_recv, rx_recv) = mpsc::channel::<WsMessage>(32);
 
         // Spawn task to handle sending messages
+        // Store the JoinHandle so we can detect task panics
         let tx_send_clone = tx_send.clone();
-        tokio::spawn(async move {
+        let send_task = tokio::spawn(async move {
             while let Some(msg) = rx_send.recv().await {
                 if write.send(Message::Text(msg)).await.is_err() {
+                    log::debug!("WebSocket send task: connection closed");
                     break;
                 }
             }
         });
 
         // Spawn task to handle receiving messages
-        tokio::spawn(async move {
+        // Store the JoinHandle so we can detect task panics
+        let recv_task = tokio::spawn(async move {
             while let Some(Ok(msg)) = read.next().await {
                 if let Message::Text(text) = msg {
-                    if let Ok(ws_msg) = serde_json::from_str::<WsMessage>(&text) {
-                        if tx_recv.send(ws_msg).await.is_err() {
-                            break;
+                    match serde_json::from_str::<WsMessage>(&text) {
+                        Ok(ws_msg) => {
+                            if tx_recv.send(ws_msg).await.is_err() {
+                                log::debug!("WebSocket recv task: receiver dropped");
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            log::debug!("Failed to parse WebSocket message: {e}");
+                            log::trace!("Malformed message content: {text}");
                         }
                     }
                 }
             }
+            log::debug!("WebSocket recv task: stream ended");
         });
 
         let mut client = Self {
             sender: tx_send_clone,
             receiver: rx_recv,
             msg_id: 0,
+            send_task,
+            recv_task,
         };
 
         // Wait for auth_required
@@ -151,9 +174,15 @@ impl WsClient {
         Ok(client)
     }
 
-    async fn send_raw(&self, msg: &str) -> Result<()> {
+    /// Send a raw string message, accepting owned or borrowed strings efficiently.
+    async fn send_raw<'a>(&self, msg: impl Into<Cow<'a, str>>) -> Result<()> {
+        // Check if the background tasks are still alive
+        if self.send_task.is_finished() {
+            return Err(anyhow!("WebSocket send task has terminated unexpectedly"));
+        }
+
         self.sender
-            .send(msg.to_string())
+            .send(msg.into().into_owned())
             .await
             .context("sending WebSocket message")
     }
@@ -167,11 +196,18 @@ impl WsClient {
         let id = self.next_id();
         let mut msg = msg.clone();
         msg["id"] = json!(id);
-        self.send_raw(&msg.to_string()).await?;
+        self.send_raw(msg.to_string()).await?;
         Ok(id)
     }
 
     async fn receive(&mut self) -> Result<WsMessage> {
+        // Check if the receive task has panicked or terminated
+        if self.recv_task.is_finished() {
+            return Err(anyhow!(
+                "WebSocket receive task has terminated unexpectedly"
+            ));
+        }
+
         self.receiver
             .recv()
             .await
@@ -206,6 +242,26 @@ impl WsClient {
     pub async fn next_event(&mut self) -> Result<WsMessage> {
         self.receive().await
     }
+
+    /// Wait for a subscription confirmation message
+    pub async fn wait_for_subscription_confirmation(&mut self, sub_id: u64) -> Result<()> {
+        loop {
+            match self.next_event().await? {
+                WsMessage::Result {
+                    id, success, error, ..
+                } if id == sub_id => {
+                    if !success {
+                        if let Some(err) = error {
+                            return Err(anyhow!("Subscription failed: {}", err.message));
+                        }
+                        return Err(anyhow!("Subscription failed"));
+                    }
+                    return Ok(());
+                }
+                _ => continue,
+            }
+        }
+    }
 }
 
 /// Run an event watch loop
@@ -219,23 +275,7 @@ pub async fn watch_events(
 
     log::debug!("Subscribed to events with id {}", sub_id);
 
-    // Wait for subscription confirmation
-    loop {
-        match client.next_event().await? {
-            WsMessage::Result {
-                id, success, error, ..
-            } if id == sub_id => {
-                if !success {
-                    if let Some(err) = error {
-                        return Err(anyhow!("Subscription failed: {}", err.message));
-                    }
-                    return Err(anyhow!("Subscription failed"));
-                }
-                break;
-            }
-            _ => continue,
-        }
-    }
+    client.wait_for_subscription_confirmation(sub_id).await?;
 
     // Process events
     loop {
@@ -270,23 +310,7 @@ pub async fn watch_entities(
 
     log::debug!("Subscribed to state_changed events with id {}", sub_id);
 
-    // Wait for subscription confirmation
-    loop {
-        match client.next_event().await? {
-            WsMessage::Result {
-                id, success, error, ..
-            } if id == sub_id => {
-                if !success {
-                    if let Some(err) = error {
-                        return Err(anyhow!("Subscription failed: {}", err.message));
-                    }
-                    return Err(anyhow!("Subscription failed"));
-                }
-                break;
-            }
-            _ => continue,
-        }
-    }
+    client.wait_for_subscription_confirmation(sub_id).await?;
 
     // Filter and process events
     let entity_set: std::collections::HashSet<&str> =
@@ -313,6 +337,24 @@ pub async fn watch_entities(
     }
 
     Ok(())
+}
+
+/// Convert an HTTP/HTTPS URL to a WebSocket URL.
+///
+/// This handles the protocol conversion properly:
+/// - `http://` -> `ws://`
+/// - `https://` -> `wss://`
+///
+/// Preserves ports, paths, and query strings.
+pub fn http_to_ws_url(url: &str) -> Cow<'_, str> {
+    if let Some(rest) = url.strip_prefix("https://") {
+        Cow::Owned(format!("wss://{rest}"))
+    } else if let Some(rest) = url.strip_prefix("http://") {
+        Cow::Owned(format!("ws://{rest}"))
+    } else {
+        // Already a ws:// or wss:// URL, or some other scheme
+        Cow::Borrowed(url)
+    }
 }
 
 #[cfg(test)]
@@ -343,5 +385,27 @@ mod tests {
         let event: WsEvent = serde_json::from_str(json).unwrap();
         assert_eq!(event.event_type, "state_changed");
         assert_eq!(event.data["entity_id"], "light.kitchen");
+    }
+
+    #[test]
+    fn test_http_to_ws_url() {
+        assert_eq!(
+            http_to_ws_url("http://localhost:8123"),
+            "ws://localhost:8123"
+        );
+        assert_eq!(
+            http_to_ws_url("https://home.example.com"),
+            "wss://home.example.com"
+        );
+        assert_eq!(
+            http_to_ws_url("https://home.example.com:8443/path?query=1"),
+            "wss://home.example.com:8443/path?query=1"
+        );
+        // Already a WebSocket URL should be unchanged
+        assert_eq!(http_to_ws_url("ws://localhost:8123"), "ws://localhost:8123");
+        assert_eq!(
+            http_to_ws_url("wss://home.example.com"),
+            "wss://home.example.com"
+        );
     }
 }

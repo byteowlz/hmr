@@ -11,7 +11,7 @@ use tabled::Tabled;
 use crate::api::{EntityState, HassClient};
 use crate::cli::{EntityCommand, OutputFormat};
 use crate::config::RuntimeContext;
-use crate::output::{parse_json_input, print_output, print_table};
+use crate::output::{output_for_format, parse_json_input, print_output, print_table};
 use crate::websocket;
 
 #[derive(Debug, Tabled, Serialize)]
@@ -64,6 +64,9 @@ pub async fn run(ctx: &RuntimeContext, command: EntityCommand) -> Result<()> {
 
 async fn list(ctx: &RuntimeContext, filter: Option<String>) -> Result<()> {
     let client = HassClient::new(ctx)?;
+    // Note: Home Assistant API doesn't support server-side filtering, so we must
+    // load all entities and filter client-side. For large installations, this is
+    // the only option without caching or a local database.
     let states = client.get_states().await?;
 
     let filtered: Vec<_> = if let Some(ref filter) = filter {
@@ -84,55 +87,40 @@ async fn list(ctx: &RuntimeContext, filter: Option<String>) -> Result<()> {
         states.iter().collect()
     };
 
-    match ctx.output_format() {
-        OutputFormat::Json => {
-            print_output(ctx, &filtered)?;
-        }
-        OutputFormat::Yaml => {
-            print_output(ctx, &filtered)?;
-        }
-        OutputFormat::Table | OutputFormat::Auto => {
-            let rows: Vec<EntityRow> = filtered.iter().map(|s| EntityRow::from(*s)).collect();
-            if rows.is_empty() {
-                if filter.is_some() {
-                    println!("No entities found matching filter");
-                } else {
-                    println!("No entities found");
-                }
+    output_for_format(ctx, &filtered, || {
+        let rows: Vec<EntityRow> = filtered.iter().map(|s| EntityRow::from(*s)).collect();
+        if rows.is_empty() {
+            if filter.is_some() {
+                println!("No entities found matching filter");
             } else {
-                print_table(ctx, &rows)?;
+                println!("No entities found");
             }
+        } else {
+            print_table(ctx, &rows)?;
         }
-    }
-
-    Ok(())
+        Ok(())
+    })
 }
 
 async fn get(ctx: &RuntimeContext, entity_id: &str) -> Result<()> {
     let client = HassClient::new(ctx)?;
     let state = client.get_state(entity_id).await?;
 
-    match ctx.output_format() {
-        OutputFormat::Json | OutputFormat::Yaml => {
-            print_output(ctx, &state)?;
-        }
-        OutputFormat::Table | OutputFormat::Auto => {
-            println!("Entity: {}", state.entity_id);
-            println!("State:  {}", state.state);
-            println!();
-            println!("Attributes:");
-            if let Some(attrs) = state.attributes.as_object() {
-                for (key, value) in attrs {
-                    println!("  {}: {}", key, value);
-                }
+    output_for_format(ctx, &state, || {
+        println!("Entity: {}", state.entity_id);
+        println!("State:  {}", state.state);
+        println!();
+        println!("Attributes:");
+        if let Some(attrs) = state.attributes.as_object() {
+            for (key, value) in attrs {
+                println!("  {}: {}", key, value);
             }
-            println!();
-            println!("Last Changed: {}", state.last_changed);
-            println!("Last Updated: {}", state.last_updated);
         }
-    }
-
-    Ok(())
+        println!();
+        println!("Last Changed: {}", state.last_changed);
+        println!("Last Updated: {}", state.last_updated);
+        Ok(())
+    })
 }
 
 async fn set(
@@ -167,21 +155,15 @@ async fn history(ctx: &RuntimeContext, entity_id: &str, since: &str) -> Result<(
 
     let history = client.get_history(entity_id, &start_str).await?;
 
-    match ctx.output_format() {
-        OutputFormat::Json | OutputFormat::Yaml => {
-            print_output(ctx, &history)?;
+    output_for_format(ctx, &history, || {
+        if history.is_empty() || history[0].is_empty() {
+            println!("No history found for {} in the last {}", entity_id, since);
+        } else {
+            let rows: Vec<EntityRow> = history[0].iter().map(EntityRow::from).collect();
+            print_table(ctx, &rows)?;
         }
-        OutputFormat::Table | OutputFormat::Auto => {
-            if history.is_empty() || history[0].is_empty() {
-                println!("No history found for {} in the last {}", entity_id, since);
-            } else {
-                let rows: Vec<EntityRow> = history[0].iter().map(EntityRow::from).collect();
-                print_table(ctx, &rows)?;
-            }
-        }
-    }
-
-    Ok(())
+        Ok(())
+    })
 }
 
 async fn watch(ctx: &RuntimeContext, entity_ids: &[String]) -> Result<()> {

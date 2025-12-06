@@ -171,7 +171,6 @@ pub struct HomeAssistantConfig {
     pub token: Option<String>,
     pub timeout: u64,
     pub insecure: bool,
-    pub cert_path: Option<String>,
 }
 
 impl Default for HomeAssistantConfig {
@@ -181,7 +180,6 @@ impl Default for HomeAssistantConfig {
             token: None,
             timeout: 30,
             insecure: false,
-            cert_path: None,
         }
     }
 }
@@ -316,7 +314,18 @@ pub fn write_default_config(path: &Path) -> Result<()> {
         path.display()
     );
 
-    fs::write(path, content).with_context(|| format!("writing config to {}", path.display()))
+    fs::write(path, &content).with_context(|| format!("writing config to {}", path.display()))?;
+
+    // Set restrictive permissions (0600) on Unix systems since config may contain tokens
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let permissions = fs::Permissions::from_mode(0o600);
+        fs::set_permissions(path, permissions)
+            .with_context(|| format!("setting permissions on {}", path.display()))?;
+    }
+
+    Ok(())
 }
 
 fn expand_path(path: &Path) -> Result<PathBuf> {

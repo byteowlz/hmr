@@ -1,100 +1,161 @@
-# Rust CLI Template
+# hmr - homer, a home assistant CLI
 
-This repository provides a batteries-included starting point for building cross-platform Rust CLIs. It is designed to be opinionated about developer experience while remaining easy to extend.
+A slim, fast CLI for Home Assistant.
 
 ## Quick Start
 
-- Install the latest stable Rust toolchain (`rustup default stable`).
-- Fetch dependencies and verify the build:
+1. Install the latest stable Rust toolchain (`rustup default stable`).
 
-  ```bash
-  cargo test
-  ```
+2. Build and install:
 
-- Run the CLI in place:
+   ```bash
+   cargo install --path .
+   ```
 
-  ```bash
-  cargo run -- run
-  ```
+3. Configure your Home Assistant connection:
 
-- Scaffold a fresh project from this template:
+   ```bash
+   export HASS_SERVER="http://homeassistant.local:8123"
+   export HASS_TOKEN="your-long-lived-access-token"
+   ```
 
-  ```bash
-  scripts/new-cli.sh my-cli
-  ```
+4. Verify the connection:
 
-  ```powershell
-  pwsh scripts/new-cli.ps1 my-cli
-  ```
+   ```bash
+   hmr info
+   ```
 
-## Features
+## Installation
 
-- `clap`-powered command interface with shared global flags (`-q`, `-v`, `--debug`, `--trace`, `--json`, `--yaml`, `--no-color`, `--dry-run`, `--yes`).
-- `config`-based configuration loader that creates `$XDG_CONFIG_HOME/hmr/config.toml` (or platform equivalents) on first run.
-- Environment overrides using the `HMR__*` prefix; e.g. `HMR__LOGGING__LEVEL=debug`.
-- Configurable data and state directories that honor XDG locations on Unix and the appropriate directories on Windows.
-- Shell completion generation via `cargo run -- completions <shell>`.
-- Logging, runtime limits, and diagnostics output ready to customize for your workflow.
-- `scripts/new-cli.sh` to clone the template with a new crate name and paths.
-
-## CLI Overview
+### From Source
 
 ```bash
-cargo run -- --help
+cargo install --path .
 ```
 
-Key subcommands:
+### Development
 
-- `run [TASK]` – executes the primary workflow with optional profile overrides.
-- `init` – creates or refreshes the config file (use `--force` or `--yes` to overwrite).
-- `config show|path|reset` – inspects the effective configuration.
-- `completions <shell>` – emits shell completions to stdout (`bash`, `zsh`, `fish`, `powershell`, `elvish`).
-
-Global flags apply to every subcommand, enabling quiet mode, stacked verbosity (`-vv`), trace logging, dry runs, JSON/YAML output, color control, progress suppression, and timeouts.
+```bash
+cargo run -- info
+```
 
 ## Configuration
 
-- Default config path: `$XDG_CONFIG_HOME/hmr/config.toml` (or `%APPDATA%\hmr\config.toml` on Windows). Override with `--config <path>`.
-- Sample configuration with inline comments is available at `examples/config.toml`.
-- Data and state directories default to `$XDG_DATA_HOME/hmr` and `$XDG_STATE_HOME/hmr` (falling back to `~/.local/share` and `~/.local/state` when unset). Override inside the config file.
-- Values support `~` expansion and environment variables (e.g. `$HOME/logs/app.log`).
+hmr uses a TOML config file with environment variable overrides.
 
-## Development Workflow
+### Config File Location
 
-- Format the codebase:
+- Linux/macOS: `$XDG_CONFIG_HOME/hmr/config.toml` (defaults to `~/.config/hmr/config.toml`)
+- Windows: `%APPDATA%\hmr\config.toml`
 
-  ```bash
-  cargo fmt
-  ```
+Override with `--config <path>` or `HMR_CONFIG` env var.
 
-- Run the test suite:
+### Environment Variables
 
-  ```bash
-  cargo test
-  ```
+| Variable | Description |
+|----------|-------------|
+| `HASS_SERVER` | Home Assistant server URL |
+| `HASS_TOKEN` | Long-lived access token |
+| `HMR__*` | Override any config value (e.g., `HMR__LOGGING__LEVEL=debug`) |
 
-- Recommended lint pass during active development:
+### Example Config
 
-  ```bash
-  cargo clippy --all-targets --all-features
-  ```
+See `examples/config.toml` for a complete example with comments.
 
-- Generate completions for your shell:
+## Commands
 
-  ```bash
-  cargo run -- completions bash > target/hmr.bash
-  ```
+### Entity Management
 
-## Scaffold New Projects
+```bash
+hmr entity list                    # List all entities
+hmr entity list "light"            # Filter entities (fuzzy match)
+hmr entity get light.kitchen       # Get entity details
+hmr entity set light.kitchen --state on
+hmr entity history light.kitchen --since 2h
+hmr entity watch light.kitchen light.bedroom  # Real-time state changes
+```
 
-- Run `scripts/new-cli.sh my-cli` (Unix shells) or `pwsh scripts/new-cli.ps1 my-cli` (Windows/PowerShell) to copy the template into `./my-cli` with all configuration files updated to the new crate name.
-- Provide `--path /some/where` (or `-Path C:\work\my-cli`) to choose a different destination directory.
-- Requirements: `python3` for the shell script, PowerShell 7 (`pwsh`) for the Windows script.
+### Service Calls
 
-## Project Structure
+```bash
+hmr service list                   # List all services
+hmr service list light             # List services for a domain
+hmr service call light.turn_on target=light.kitchen brightness=255
+hmr service call light.turn_on --json '{"target": {"entity_id": "light.kitchen"}}'
+```
 
-- `src/main.rs` – CLI entry point, argument parsing, config loading, and command handlers.
-- `examples/config.toml` – commented configuration template.
-- `Cargo.toml` – dependencies and metadata for the template crate.
+### Events
 
-Feel free to fork this template and tailor the commands, config schema, or runtime behavior to your project's needs.
+```bash
+hmr event watch                    # Watch all events
+hmr event watch state_changed      # Watch specific event type
+hmr event fire my_custom_event --json '{"data": "value"}'
+```
+
+### Templates
+
+```bash
+hmr template "{{ states('light.kitchen') }}"
+hmr template --file my_template.j2
+```
+
+### Areas and Devices
+
+```bash
+hmr area list
+hmr area create "Living Room"
+hmr area delete "Living Room"
+
+hmr device list
+hmr device assign "Living Room" <device_id>
+hmr device update <device_id> --json '{"name_by_user": "My Device"}'
+```
+
+### Configuration
+
+```bash
+hmr config show                    # Show effective config
+hmr config path                    # Print config file path
+hmr config get homeassistant.timeout
+hmr config reset                   # Reset to defaults
+```
+
+### Shell Completions
+
+```bash
+hmr completions bash > ~/.local/share/bash-completion/completions/hmr
+hmr completions zsh > ~/.zfunc/_hmr
+hmr completions fish > ~/.config/fish/completions/hmr.fish
+```
+
+## Global Options
+
+| Option | Description |
+|--------|-------------|
+| `-o, --output <FORMAT>` | Output format: `json`, `yaml`, `table`, `auto` |
+| `-s, --server <URL>` | Home Assistant server URL |
+| `--token <TOKEN>` | Authentication token |
+| `--timeout <SECONDS>` | Request timeout |
+| `--insecure` | Skip SSL certificate verification |
+| `--config <PATH>` | Override config file path |
+| `-q, --quiet` | Reduce output to errors only |
+| `-v, --verbose` | Increase verbosity (stackable: `-v`, `-vv`, `-vvv`) |
+| `--debug` | Enable debug logging |
+| `--trace` | Enable trace logging |
+| `--no-color` | Disable colored output |
+| `--columns <COLS>` | Custom table columns (comma-separated) |
+| `--no-headers` | Hide table headers |
+| `--sort-by <FIELD>` | Sort table output by field |
+
+## Development
+
+```bash
+cargo fmt                          # Format code
+cargo test                         # Run tests
+cargo clippy --all-targets         # Lint
+cargo run -- --help                # Run in development
+```
+
+## License
+
+MIT

@@ -5,9 +5,11 @@ use serde::Serialize;
 use tabled::Tabled;
 
 use crate::api::HassClient;
-use crate::cli::{OutputFormat, ServiceCommand};
+use crate::cli::ServiceCommand;
 use crate::config::RuntimeContext;
-use crate::output::{parse_json_input, parse_key_value_args, print_output, print_table};
+use crate::output::{
+    output_for_format, parse_json_input, parse_key_value_args, print_table, truncate,
+};
 
 #[derive(Debug, Tabled, Serialize)]
 struct ServiceRow {
@@ -40,38 +42,29 @@ async fn list(ctx: &RuntimeContext, domain_filter: Option<&str>) -> Result<()> {
         services.iter().collect()
     };
 
-    match ctx.output_format() {
-        OutputFormat::Json => {
-            print_output(ctx, &filtered)?;
-        }
-        OutputFormat::Yaml => {
-            print_output(ctx, &filtered)?;
-        }
-        OutputFormat::Table | OutputFormat::Auto => {
-            let rows: Vec<ServiceRow> = filtered
-                .iter()
-                .flat_map(|domain| {
-                    domain.services.iter().map(|(name, info)| ServiceRow {
-                        domain: domain.domain.clone(),
-                        service: name.clone(),
-                        description: truncate(&info.description, 50),
-                    })
+    output_for_format(ctx, &filtered, || {
+        let rows: Vec<ServiceRow> = filtered
+            .iter()
+            .flat_map(|domain| {
+                domain.services.iter().map(|(name, info)| ServiceRow {
+                    domain: domain.domain.clone(),
+                    service: name.clone(),
+                    description: truncate(&info.description, 50),
                 })
-                .collect();
+            })
+            .collect();
 
-            if rows.is_empty() {
-                if domain_filter.is_some() {
-                    println!("No services found matching filter");
-                } else {
-                    println!("No services found");
-                }
+        if rows.is_empty() {
+            if domain_filter.is_some() {
+                println!("No services found matching filter");
             } else {
-                print_table(ctx, &rows)?;
+                println!("No services found");
             }
+        } else {
+            print_table(ctx, &rows)?;
         }
-    }
-
-    Ok(())
+        Ok(())
+    })
 }
 
 async fn call(
@@ -102,47 +95,22 @@ async fn call(
 
     let result = client.call_service(domain, service_name, &data).await?;
 
-    match ctx.output_format() {
-        OutputFormat::Json | OutputFormat::Yaml => {
-            print_output(ctx, &result)?;
-        }
-        OutputFormat::Table | OutputFormat::Auto => {
-            // For table output, show a success message
-            if result.is_array() && !result.as_array().unwrap().is_empty() {
-                println!("Service {service} called successfully");
-                println!("Affected entities:");
-                if let Some(arr) = result.as_array() {
-                    for entity in arr {
-                        if let Some(id) = entity.get("entity_id").and_then(|v| v.as_str()) {
-                            let state = entity.get("state").and_then(|v| v.as_str()).unwrap_or("?");
-                            println!("  {} -> {}", id, state);
-                        }
+    output_for_format(ctx, &result, || {
+        // For table output, show a success message
+        if result.is_array() && !result.as_array().unwrap().is_empty() {
+            println!("Service {service} called successfully");
+            println!("Affected entities:");
+            if let Some(arr) = result.as_array() {
+                for entity in arr {
+                    if let Some(id) = entity.get("entity_id").and_then(|v| v.as_str()) {
+                        let state = entity.get("state").and_then(|v| v.as_str()).unwrap_or("?");
+                        println!("  {} -> {}", id, state);
                     }
                 }
-            } else {
-                println!("Service {service} called successfully");
             }
+        } else {
+            println!("Service {service} called successfully");
         }
-    }
-
-    Ok(())
-}
-
-fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len - 3])
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_truncate() {
-        assert_eq!(truncate("hello", 10), "hello");
-        assert_eq!(truncate("hello world!", 8), "hello...");
-    }
+        Ok(())
+    })
 }

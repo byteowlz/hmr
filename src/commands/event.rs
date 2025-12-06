@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use crate::api::HassClient;
 use crate::cli::{EventCommand, OutputFormat};
 use crate::config::RuntimeContext;
-use crate::output::{parse_json_input, print_output};
+use crate::output::{output_for_format, parse_json_input};
 use crate::websocket;
 
 pub async fn run(ctx: &RuntimeContext, command: EventCommand) -> Result<()> {
@@ -76,14 +76,8 @@ async fn fire(ctx: &RuntimeContext, event_type: &str, json_input: Option<&str>) 
 
     let result = client.fire_event(event_type, &data).await?;
 
-    match ctx.output_format() {
-        OutputFormat::Json | OutputFormat::Yaml => {
-            print_output(ctx, &result)?;
-        }
-        OutputFormat::Table | OutputFormat::Auto => {
-            println!("Event '{}' fired successfully", event_type);
-        }
-    }
-
-    Ok(())
+    output_for_format(ctx, &result, || {
+        println!("Event '{}' fired successfully", event_type);
+        Ok(())
+    })
 }

@@ -45,10 +45,6 @@ pub struct GlobalOpts {
     #[arg(long, global = true)]
     pub insecure: bool,
 
-    /// Client certificate path
-    #[arg(long, value_name = "PATH", global = true)]
-    pub cert: Option<PathBuf>,
-
     /// Override config file path
     #[arg(long, value_name = "PATH", env = "HMR_CONFIG", global = true)]
     pub config: Option<PathBuf>,
@@ -87,6 +83,7 @@ pub struct GlobalOpts {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[non_exhaustive]
 pub enum OutputFormat {
     Json,
     Yaml,
