@@ -3,7 +3,7 @@
 
 # Global settings
 # Disable publishing to crates.io
-publish = true
+publish = false
 
 # Don't push tags to git remote automatically
 push = false
