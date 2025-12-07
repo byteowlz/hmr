@@ -16,7 +16,7 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::cache::{Cache, CachedEntity};
-use crate::fuzzy::{FuzzyMatcher, Match, MatchResult};
+use crate::fuzzy::{FuzzyMatcher, Match, MatchResult, MatchType};
 
 /// Action verbs and their mappings to Home Assistant services
 #[derive(Debug, Clone)]
@@ -275,7 +275,17 @@ impl NLParser {
             // First try the full string
             match self.matcher.find_entity(&target_string, cache) {
                 MatchResult::Single(m) => {
-                    result.targets.push(m.into());
+                    // Only accept single matches with reasonable confidence
+                    // Exact and prefix matches are always fine, fuzzy needs higher threshold
+                    let min_confidence = match m.match_type {
+                        MatchType::Exact | MatchType::Prefix => 0.0,
+                        MatchType::Typo { .. } => 0.6,
+                        MatchType::Fuzzy => 0.65,
+                    };
+                    
+                    if m.confidence >= min_confidence {
+                        result.targets.push(m.into());
+                    }
                 }
                 MatchResult::Multiple(matches) => {
                     // If we have a domain hint, filter by it
@@ -289,21 +299,40 @@ impl NLParser {
                     };
 
                     if filtered.len() == 1 {
-                        result
-                            .targets
-                            .push(filtered.into_iter().next().unwrap().into());
-                    } else if !filtered.is_empty() {
-                        for m in filtered.into_iter().take(5) {
+                        let m = filtered.into_iter().next().unwrap();
+                        // Apply same confidence threshold for single filtered match
+                        let min_confidence = match m.match_type {
+                            MatchType::Exact | MatchType::Prefix => 0.0,
+                            MatchType::Typo { .. } => 0.6,
+                            MatchType::Fuzzy => 0.65,
+                        };
+                        if m.confidence >= min_confidence {
                             result.targets.push(m.into());
                         }
-                        result.notes.push("Multiple matches found".to_string());
+                    } else if !filtered.is_empty() {
+                        // For multiple matches, only include high-confidence ones
+                        for m in filtered.into_iter().take(5) {
+                            if m.confidence >= 0.5 {
+                                result.targets.push(m.into());
+                            }
+                        }
+                        if !result.targets.is_empty() {
+                            result.notes.push("Multiple matches found".to_string());
+                        }
                     }
                 }
                 MatchResult::None => {
-                    // Try individual tokens
+                    // Try individual tokens, but only accept high-confidence matches
                     for token in &remaining_tokens {
-                        if let MatchResult::Single(m) = self.matcher.find_entity(token, cache) {
-                            result.targets.push(m.into());
+                        match self.matcher.find_entity(token, cache) {
+                            MatchResult::Single(m) => {
+                                // Only accept if confidence is reasonably high (> 0.7)
+                                // This prevents matching "schreibtisch" to "sun"
+                                if m.confidence > 0.7 {
+                                    result.targets.push(m.into());
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -346,16 +375,36 @@ impl NLParser {
         }
 
         // If we have a domain hint but no targets, get all in domain
+        // This is a fallback when no specific entity was matched
         if result.targets.is_empty() && domain_hint.is_some() {
             let domain = domain_hint.as_ref().unwrap();
             let entities = self.matcher.find_entities_in_domain(domain, cache);
-            for entity in entities.into_iter().take(10) {
-                result.targets.push(ParsedTarget {
-                    entity_id: entity.entity_id.clone(),
-                    friendly_name: entity.friendly_name.clone(),
-                    match_type: "domain_match".to_string(),
-                    matched_input: domain.clone(),
-                });
+            let entity_count = entities.len();
+            
+            // Only use domain-based fallback if there are a reasonable number of entities
+            // Don't target all 50+ lights just because we couldn't find a specific match
+            if !entities.is_empty() && entity_count <= 15 {
+                for entity in entities.into_iter().take(10) {
+                    result.targets.push(ParsedTarget {
+                        entity_id: entity.entity_id.clone(),
+                        friendly_name: entity.friendly_name.clone(),
+                        match_type: "domain_match".to_string(),
+                        matched_input: domain.clone(),
+                    });
+                }
+                if !result.notes.is_empty() {
+                    result.notes.push(format!(
+                        "No specific entity found, targeting all {} entities in domain '{}'",
+                        entity_count.min(10),
+                        domain
+                    ));
+                }
+            } else if entity_count > 15 {
+                result.notes.push(format!(
+                    "No specific entity matched. Domain '{}' has {} entities - please be more specific.",
+                    domain,
+                    entity_count
+                ));
             }
         }
 

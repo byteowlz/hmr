@@ -74,6 +74,18 @@ pub async fn execute(ctx: &RuntimeContext, cmd: DoCommand) -> Result<()> {
         ));
     }
 
+    // Check if we have low confidence matches - warn the user
+    let low_confidence_matches = parsed.targets.iter()
+        .filter(|t| t.match_type.contains("Fuzzy") || t.match_type.contains("domain_match"))
+        .count();
+    
+    if low_confidence_matches > 0 && low_confidence_matches == parsed.targets.len() {
+        if !ctx.global.quiet {
+            eprintln!("Warning: All matches have low confidence. Results may not be what you expect.");
+            eprintln!("Consider using more specific entity names or refreshing the cache.");
+        }
+    }
+
     // Show interpretation
     if !ctx.global.quiet {
         println!("Interpreted as: {}", parsed.interpretation);
