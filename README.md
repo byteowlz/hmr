@@ -209,10 +209,20 @@ cat complex_template.j2 | hmr template
 
 ```bash
 cargo fmt                          # Format code
+cargo check                        # Check for compiler warnings
 cargo test                         # Run tests
 cargo clippy --all-targets         # Lint
 cargo run -- --help                # Run in development
 ```
+
+### Recent Changes
+
+- Implemented match type tracking for natural language commands (Exact, Fuzzy, Typo)
+- Added area extraction and context tracking in command history
+- Implemented accuracy statistics recording (fuzzy matches, typos, ambiguous prompts, failures)
+- Enhanced command output to show match types for non-exact matches
+- All 90 tests passing
+- Remaining warnings are for public API methods reserved for future use
 
 ## License
 

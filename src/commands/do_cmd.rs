@@ -79,6 +79,12 @@ pub async fn execute(ctx: &RuntimeContext, cmd: DoCommand) -> Result<()> {
             for note in &parsed.notes {
                 println!("Note: {}", note);
             }
+            // Track that we had an ambiguous match
+            if parsed.notes.iter().any(|n| n.contains("Multiple matches")) {
+                let mut history = History::new()?;
+                history.stats_mut().record_ambiguous();
+                history.save_stats()?;
+            }
         }
     }
 
@@ -88,7 +94,12 @@ pub async fn execute(ctx: &RuntimeContext, cmd: DoCommand) -> Result<()> {
         println!("Targets ({}):", parsed.targets.len());
         for target in &parsed.targets {
             let name = target.friendly_name.as_deref().unwrap_or(&target.entity_id);
-            println!("  {} ({})", target.entity_id, name);
+            let match_info = if target.match_type == "Exact" {
+                String::new()
+            } else {
+                format!(" [{}]", target.match_type)
+            };
+            println!("  {} ({}){}", target.entity_id, name, match_info);
         }
 
         if !parsed.parameters.is_empty() {
@@ -183,10 +194,18 @@ fn record_success(
 ) -> Result<()> {
     let mut history = History::new()?;
 
+    // Determine match type from first target
+    let match_type = parsed
+        .targets
+        .first()
+        .map(|t| t.match_type.as_str())
+        .unwrap_or("Unknown");
+
     // Create history entry
     let entry = HistoryEntry::new(input, &parsed.interpretation)
         .with_service(&service_call.domain, &service_call.service)
         .with_targets(service_call.target.entity_id.clone())
+        .with_match_type(match_type)
         .with_success();
 
     history.append(&entry)?;
@@ -199,13 +218,26 @@ fn record_success(
 
     history.update_context(
         service_call.target.entity_id.clone(),
-        None, // TODO: extract area from parsed
+        parsed.matched_area.clone(),
         domain,
         parsed.action.clone(),
     )?;
 
-    // Update stats
-    history.stats_mut().record_exact(); // TODO: track actual match type
+    // Update stats based on actual match type
+    match match_type {
+        "Exact" => history.stats_mut().record_exact(),
+        "Fuzzy" => history.stats_mut().record_fuzzy(),
+        s if s.starts_with("Typo") => {
+            // Extract original and corrected from matched_input if available
+            if let Some(target) = parsed.targets.first() {
+                history
+                    .stats_mut()
+                    .record_typo(&target.matched_input, &target.entity_id);
+            }
+        }
+        _ => history.stats_mut().record_exact(), // Default to exact
+    }
+
     for entity in &service_call.target.entity_id {
         history.stats_mut().record_entity_use(entity);
     }
@@ -215,11 +247,15 @@ fn record_success(
 }
 
 fn record_failure(input: &str, error: &str) -> Result<()> {
-    let history = History::new()?;
+    let mut history = History::new()?;
 
     let entry = HistoryEntry::new(input, "").with_error(error);
 
     history.append(&entry)?;
+    
+    // Record failure in stats
+    history.stats_mut().record_failure();
+    history.save_stats()?;
 
     Ok(())
 }

@@ -135,6 +135,8 @@ pub struct ParsedCommand {
     pub interpretation: String,
     /// Any warnings or notes
     pub notes: Vec<String>,
+    /// Matched area if any
+    pub matched_area: Option<String>,
 }
 
 /// A matched target (entity or entity pattern)
@@ -201,6 +203,7 @@ impl NLParser {
             confidence: 0.0,
             interpretation: String::new(),
             notes: Vec::new(),
+            matched_area: None,
         };
 
         // Classify each token
@@ -243,6 +246,7 @@ impl NLParser {
             // Check if it's an area
             if let MatchResult::Single(area_match) = self.matcher.find_area(token, cache) {
                 area_hint = Some(area_match.item.area_id.clone());
+                result.matched_area = Some(area_match.item.area_id.clone());
                 continue;
             }
 
@@ -785,6 +789,7 @@ mod tests {
             confidence: 1.0,
             interpretation: "turn_on Kitchen Light".to_string(),
             notes: vec![],
+            matched_area: None,
         };
 
         let call = parsed.to_service_call().unwrap();
@@ -803,6 +808,7 @@ mod tests {
             confidence: 0.3,
             interpretation: "turn_on".to_string(),
             notes: vec![],
+            matched_area: None,
         };
 
         let result = parsed.to_service_call();
@@ -827,6 +833,7 @@ mod tests {
             confidence: 1.0,
             interpretation: "turn_on kitchen 50%".to_string(),
             notes: vec![],
+            matched_area: None,
         };
 
         let call = parsed.to_service_call().unwrap();
@@ -859,6 +866,7 @@ mod tests {
             confidence: 0.7,
             interpretation: "turn_on lights".to_string(),
             notes: vec![],
+            matched_area: None,
         };
 
         let call = parsed.to_service_call().unwrap();
