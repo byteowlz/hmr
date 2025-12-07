@@ -29,6 +29,10 @@ pub async fn execute(ctx: &RuntimeContext, command: CacheCommand) -> Result<()> 
 async fn status(ctx: &RuntimeContext) -> Result<()> {
     let server_url = ctx.server_url().unwrap_or("unknown");
     let status = cache_status(server_url)?;
+    
+    // Load cache to show cache statistics
+    let manager = CacheManager::new(ctx)?;
+    let cache = manager.cache();
 
     match ctx.output_format() {
         OutputFormat::Json => {
@@ -41,6 +45,16 @@ async fn status(ctx: &RuntimeContext) -> Result<()> {
             println!("Cache directory: {}", status.cache_dir.display());
             println!("Server: {}", server_url);
             println!();
+            
+            // Show cache availability status
+            if cache.has_entities() || cache.has_areas() || cache.has_services() || cache.has_devices() {
+                println!("Cache availability:");
+                println!("  Entities:  {}", if cache.has_entities() { "✓" } else { "✗" });
+                println!("  Areas:     {}", if cache.has_areas() { "✓" } else { "✗" });
+                println!("  Services:  {}", if cache.has_services() { "✓" } else { "✗" });
+                println!("  Devices:   {}", if cache.has_devices() { "✓" } else { "✗" });
+                println!();
+            }
 
             #[derive(Tabled)]
             struct CacheRow {
@@ -341,13 +355,40 @@ async fn entity_info(ctx: &RuntimeContext, entity_id: &str) -> Result<()> {
         return Ok(());
     }
 
+    // Try direct lookup first (exact match by ID)
+    if let Some(entity) = manager.cache().get_entity(entity_id) {
+        match ctx.output_format() {
+            OutputFormat::Json => {
+                print_output(ctx, entity)?;
+            }
+            OutputFormat::Yaml => {
+                println!("{}", serde_yaml::to_string(entity)?);
+            }
+            _ => {
+                println!("Entity ID: {}", entity.entity_id);
+                println!("Domain: {}", entity.domain);
+                println!("Object ID: {}", entity.object_id);
+                println!("State: {}", entity.state);
+                if let Some(ref name) = entity.friendly_name {
+                    println!("Friendly Name: {}", name);
+                }
+                if let Some(ref area_id) = entity.area_id {
+                    println!("Area ID: {}", area_id);
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    // Fall back to fuzzy matching
     let matcher = FuzzyMatcher::new();
     let result = matcher.find_entity(entity_id, manager.cache());
-
+    
+    let is_exact = result.is_exact();
     match result {
         crate::fuzzy::MatchResult::Single(m) => {
             // Show correction if it was a fuzzy/typo match
-            if !matches!(m.match_type, crate::fuzzy::MatchType::Exact) {
+            if !is_exact {
                 if !ctx.global.quiet {
                     println!("Matched: {}", format_correction(entity_id, &m.matched_on));
                     println!();
@@ -416,13 +457,52 @@ async fn area_info(ctx: &RuntimeContext, area: &str) -> Result<()> {
         return Ok(());
     }
 
+    // Try direct lookup first (exact match by ID)
+    if let Some(area_item) = manager.cache().get_area(area) {
+        match ctx.output_format() {
+            OutputFormat::Json => {
+                print_output(ctx, area_item)?;
+            }
+            OutputFormat::Yaml => {
+                println!("{}", serde_yaml::to_string(area_item)?);
+            }
+            _ => {
+                println!("Area ID: {}", area_item.area_id);
+                println!("Name: {}", area_item.name);
+                if !area_item.aliases.is_empty() {
+                    println!("Aliases: {}", area_item.aliases.join(", "));
+                }
+                
+                // Show entities in this area
+                let entities_in_area = manager.cache().entities_in_area(&area_item.area_id);
+                if !entities_in_area.is_empty() {
+                    println!();
+                    println!("Entities in this area ({}):", entities_in_area.len());
+                    for entity in entities_in_area.iter().take(20) {
+                        let name = entity
+                            .friendly_name
+                            .as_deref()
+                            .unwrap_or(&entity.entity_id);
+                        println!("  {} ({})", entity.entity_id, name);
+                    }
+                    if entities_in_area.len() > 20 {
+                        println!("  ... and {} more", entities_in_area.len() - 20);
+                    }
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    // Fall back to fuzzy matching
     let matcher = FuzzyMatcher::new();
     let result = matcher.find_area(area, manager.cache());
-
+    
+    let is_exact = result.is_exact();
     match result {
         crate::fuzzy::MatchResult::Single(m) => {
             // Show correction if it was a fuzzy/typo match
-            if !matches!(m.match_type, crate::fuzzy::MatchType::Exact) {
+            if !is_exact {
                 if !ctx.global.quiet {
                     println!("Matched: {}", format_correction(area, &m.matched_on));
                     println!();

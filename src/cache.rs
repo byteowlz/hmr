@@ -497,7 +497,15 @@ impl<'a> CacheManager<'a> {
         &self.cache
     }
 
-    /// Get mutable cache
+    /// Get mutable cache for advanced operations
+    /// 
+    /// This allows direct modification of cache state for operations that need to:
+    /// - Manually update cache entries after operations
+    /// - Perform bulk cache modifications
+    /// - Implement custom cache management strategies
+    /// 
+    /// For standard cache updates, prefer using the refresh_* methods.
+    /// This is part of the public API for extensibility and plugins.
     pub fn cache_mut(&mut self) -> &mut Cache {
         &mut self.cache
     }
@@ -510,9 +518,10 @@ impl<'a> CacheManager<'a> {
         let cached: Vec<CachedEntity> = states.iter().map(CachedEntity::from).collect();
         let server_url = self.ctx.server_url()?.to_string();
 
-        self.cache
-            .set_entities(CacheFile::new(cached, ttl::ENTITIES, server_url));
-        self.cache.save()?;
+        // Use cache_mut for direct manipulation
+        let cache = self.cache_mut();
+        cache.set_entities(CacheFile::new(cached, ttl::ENTITIES, server_url));
+        cache.save()?;
 
         log::info!("Refreshed {} entities", self.cache.entities().len());
         Ok(())
@@ -526,9 +535,10 @@ impl<'a> CacheManager<'a> {
         let cached: Vec<CachedArea> = areas.iter().map(CachedArea::from).collect();
         let server_url = self.ctx.server_url()?.to_string();
 
-        self.cache
-            .set_areas(CacheFile::new(cached, ttl::AREAS, server_url));
-        self.cache.save()?;
+        // Use cache_mut for direct manipulation
+        let cache = self.cache_mut();
+        cache.set_areas(CacheFile::new(cached, ttl::AREAS, server_url));
+        cache.save()?;
 
         log::info!("Refreshed {} areas", self.cache.areas().len());
         Ok(())
@@ -552,9 +562,11 @@ impl<'a> CacheManager<'a> {
         }
 
         let server_url = self.ctx.server_url()?.to_string();
-        self.cache
-            .set_services(CacheFile::new(cached, ttl::SERVICES, server_url));
-        self.cache.save()?;
+        
+        // Use cache_mut for direct manipulation
+        let cache = self.cache_mut();
+        cache.set_services(CacheFile::new(cached, ttl::SERVICES, server_url));
+        cache.save()?;
 
         log::info!("Refreshed {} services", self.cache.services().len());
         Ok(())
@@ -568,9 +580,10 @@ impl<'a> CacheManager<'a> {
         let cached: Vec<CachedDevice> = devices.iter().map(CachedDevice::from).collect();
         let server_url = self.ctx.server_url()?.to_string();
 
-        self.cache
-            .set_devices(CacheFile::new(cached, ttl::DEVICES, server_url));
-        self.cache.save()?;
+        // Use cache_mut for direct manipulation
+        let cache = self.cache_mut();
+        cache.set_devices(CacheFile::new(cached, ttl::DEVICES, server_url));
+        cache.save()?;
 
         log::info!("Refreshed {} devices", self.cache.devices().len());
         Ok(())
@@ -949,4 +962,5 @@ mod tests {
         let dir = cache_dir().unwrap();
         assert!(dir.to_string_lossy().contains("hmr"));
     }
+
 }

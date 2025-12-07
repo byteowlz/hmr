@@ -10,6 +10,7 @@ mod commands;
 mod config;
 mod fuzzy;
 mod history;
+mod natural_args;
 mod nl;
 mod output;
 mod websocket;
@@ -42,7 +43,9 @@ fn main() -> ExitCode {
 }
 
 fn try_main() -> Result<()> {
-    let cli = Cli::parse();
+    // Normalize natural command variations before parsing
+    let normalized_args = natural_args::normalize_args();
+    let cli = Cli::parse_from(normalized_args);
 
     // If no command is provided, print help and exit
     let Some(command) = cli.command else {

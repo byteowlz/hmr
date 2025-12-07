@@ -22,12 +22,15 @@ pub async fn execute(ctx: &RuntimeContext, cmd: DoCommand) -> Result<()> {
     // Load cache (refresh if needed)
     let mut cache_manager = CacheManager::new(ctx)?;
 
-    // Ensure we have cached entities for matching
-    if !cache_manager.cache().has_entities() {
+    // Ensure we have cached entities and services for matching
+    cache_manager.ensure_entities().await?;
+    
+    // Also ensure services are cached for better service matching in nl commands
+    if !cache_manager.cache().has_services() && !ctx.global.quiet {
         if !ctx.global.quiet {
-            eprintln!("Refreshing entity cache...");
+            eprintln!("Refreshing service cache...");
         }
-        cache_manager.refresh_entities().await?;
+        cache_manager.ensure_services().await?;
     }
 
     // Parse the natural language input

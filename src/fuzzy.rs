@@ -574,11 +574,15 @@ impl FuzzyMatcher {
         let domain_lower = domain.to_lowercase();
         let singular = to_singular(&domain_lower);
 
-        cache
-            .entities()
-            .iter()
-            .filter(|e| e.domain == domain_lower || e.domain == singular)
-            .collect()
+        // Try exact domain match first
+        let mut entities = cache.entities_in_domain(&domain_lower);
+        
+        // If domain might be plural, also try singular form
+        if entities.is_empty() && domain_lower != singular {
+            entities = cache.entities_in_domain(&singular);
+        }
+        
+        entities
     }
 
     /// Find entities in a specific area

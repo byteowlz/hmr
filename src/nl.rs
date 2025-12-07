@@ -154,11 +154,18 @@ pub struct ParsedTarget {
 
 impl From<Match<&CachedEntity>> for ParsedTarget {
     fn from(m: Match<&CachedEntity>) -> Self {
+        let match_type_str = format!("{:?}", m.match_type);
+        // Use Match::map() to transform entity reference into ParsedTarget
+        let mapped = m.map(|entity| ParsedTarget {
+            entity_id: entity.entity_id.clone(),
+            friendly_name: entity.friendly_name.clone(),
+            match_type: match_type_str,
+            matched_input: String::new(), // Will be set below
+        });
+        
         ParsedTarget {
-            entity_id: m.item.entity_id.clone(),
-            friendly_name: m.item.friendly_name.clone(),
-            match_type: format!("{:?}", m.match_type),
-            matched_input: m.matched_input,
+            matched_input: mapped.matched_input,
+            ..mapped.item
         }
     }
 }
@@ -214,15 +221,17 @@ impl NLParser {
 
         // Classify each token
         let mut action_found = false;
+        let mut action_mapping: Option<&ActionMapping> = None;
         let mut domain_hint: Option<String> = None;
         let mut area_hint: Option<String> = None;
         let mut remaining_tokens: Vec<&str> = Vec::new();
 
         for token in &tokens {
             // Check if it's an action verb
-            if let Some(action) = self.find_action(token) {
+            if let Some((action, mapping)) = self.find_action_with_mapping(token) {
                 if !action_found {
                     result.action = Some(action);
+                    action_mapping = Some(mapping);
                     action_found = true;
                     continue;
                 }
@@ -301,6 +310,17 @@ impl NLParser {
             }
         }
 
+        // If no domain hint but action doesn't infer domain, set a default
+        // For example, "dim" and "brighten" are light-specific
+        if domain_hint.is_none() {
+            if let Some(mapping) = action_mapping {
+                if !mapping.infers_domain {
+                    // Actions like dim/brighten are light-specific
+                    domain_hint = Some("light".to_string());
+                }
+            }
+        }
+
         // If we have area + domain hints but no entities, find all matching
         if result.targets.is_empty() {
             if let Some(ref area) = area_hint {
@@ -349,11 +369,15 @@ impl NLParser {
     }
 
     fn find_action(&self, token: &str) -> Option<String> {
+        self.find_action_with_mapping(token).map(|(action, _)| action)
+    }
+
+    fn find_action_with_mapping(&self, token: &str) -> Option<(String, &ActionMapping)> {
         let token_lower = token.to_lowercase();
         for mapping in &self.actions {
             for trigger in &mapping.trigger_words {
                 if *trigger == token_lower {
-                    return Some(mapping.default_service.to_string());
+                    return Some((mapping.default_service.to_string(), mapping));
                 }
             }
         }
@@ -442,10 +466,23 @@ impl NLParser {
             }
         };
 
-        // Look up the action mapping for the service
-        let action = match self.find_action(service_token) {
-            Some(a) => a,
-            None => service_token.to_string(), // Use the service name directly
+        // Try to find the service using fuzzy matching first
+        let full_service_name = format!("{}.{}", domain, service_token);
+        let action = if let MatchResult::Single(service_match) = self.matcher.find_service(&full_service_name, cache) {
+            // Use the matched service name
+            service_match.item.service.clone()
+        } else {
+            // Check if this service exists for the domain using cache
+            let domain_services = cache.services_for_domain(&domain);
+            if let Some(matching_service) = domain_services.iter().find(|s| s.eq_ignore_ascii_case(service_token)) {
+                matching_service.clone()
+            } else {
+                // Look up the action mapping for the service
+                match self.find_action(service_token) {
+                    Some(a) => a,
+                    None => service_token.to_string(), // Use the service name directly
+                }
+            }
         };
 
         let mut result = ParsedCommand {
