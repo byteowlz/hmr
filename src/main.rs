@@ -4,9 +4,13 @@
 //! Home Assistant instances from the terminal.
 
 mod api;
+mod cache;
 mod cli;
 mod commands;
 mod config;
+mod fuzzy;
+mod history;
+mod nl;
 mod output;
 mod websocket;
 
@@ -68,6 +72,9 @@ async fn run_command(ctx: &RuntimeContext, command: Command) -> Result<()> {
         Command::Area { command } => commands::area::run(ctx, command).await,
         Command::Device { command } => commands::device::run(ctx, command).await,
         Command::Config { command } => commands::config::run(ctx, command),
+        Command::Cache { command } => commands::cache::execute(ctx, command).await,
+        Command::Do(cmd) => commands::do_cmd::execute(ctx, cmd).await,
+        Command::History { command } => commands::history::execute(ctx, command).await,
         Command::Completions { shell } => commands::completions::run(shell),
     }
 }

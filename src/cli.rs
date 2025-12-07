@@ -145,11 +145,113 @@ pub enum Command {
         command: ConfigCommand,
     },
 
+    /// Manage local entity cache for faster fuzzy matching
+    Cache {
+        #[command(subcommand)]
+        command: CacheCommand,
+    },
+
+    /// Execute natural language commands (e.g., "turn on kitchen light")
+    #[command(name = "do", alias = "run")]
+    Do(DoCommand),
+
+    /// View and manage command history
+    History {
+        #[command(subcommand)]
+        command: HistoryCommand,
+    },
+
     /// Generate shell completions
     Completions {
         #[arg(value_enum)]
         shell: Shell,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum HistoryCommand {
+    /// Show recent command history
+    List {
+        /// Number of entries to show
+        #[arg(short = 'n', long, default_value = "20")]
+        limit: usize,
+
+        /// Filter by pattern
+        #[arg(short, long)]
+        filter: Option<String>,
+    },
+
+    /// Repeat the last command
+    Again,
+
+    /// Show current context
+    Context,
+
+    /// Clear context
+    ClearContext,
+
+    /// Show accuracy statistics
+    Stats,
+
+    /// Clear all history
+    Clear,
+
+    /// Compact history file
+    Compact,
+}
+
+#[derive(Debug, Args)]
+pub struct DoCommand {
+    /// The natural language command to execute
+    #[arg(trailing_var_arg = true, required = true)]
+    pub words: Vec<String>,
+
+    /// Show what would be done without executing
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Skip confirmation for ambiguous matches
+    #[arg(long, short = 'y')]
+    pub yes: bool,
+
+    /// Use exact matching only (no fuzzy/typo correction)
+    #[arg(long)]
+    pub exact: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CacheCommand {
+    /// Show cache status and statistics
+    Status,
+
+    /// Refresh cached data from Home Assistant
+    Refresh {
+        /// Refresh all caches
+        #[arg(long)]
+        all: bool,
+
+        /// Refresh entities cache
+        #[arg(long)]
+        entities: bool,
+
+        /// Refresh areas cache
+        #[arg(long)]
+        areas: bool,
+
+        /// Refresh services cache
+        #[arg(long)]
+        services: bool,
+
+        /// Refresh devices cache
+        #[arg(long)]
+        devices: bool,
+    },
+
+    /// Clear all cached data
+    Clear,
+
+    /// Print cache directory path
+    Path,
 }
 
 #[derive(Debug, Subcommand)]
