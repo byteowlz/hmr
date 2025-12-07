@@ -195,6 +195,12 @@ impl NLParser {
             return Err(anyhow!("No tokens in command"));
         }
 
+        // Check for service-based command format: "call <domain> <service>"
+        // Examples: "call light turn_on", "call switch toggle"
+        if tokens.len() >= 3 && (tokens[0] == "call" || tokens[0] == "run") {
+            return self.parse_service_based(input, &tokens, cache);
+        }
+
         let mut result = ParsedCommand {
             original: input.to_string(),
             action: None,
@@ -415,6 +421,132 @@ impl NLParser {
 
         parts.join(" ")
     }
+
+    /// Parse service-based command: "call <domain> <service> [entity] [params]"
+    fn parse_service_based(&self, input: &str, tokens: &[&str], cache: &Cache) -> Result<ParsedCommand> {
+        // Format: call <domain> <service> [rest...]
+        // Examples:
+        //   call light turn_on kitchen
+        //   call switch toggle bedroom_fan
+        //   call climate set_temperature --temperature=72
+
+        let domain_token = tokens[1];
+        let service_token = tokens[2];
+        
+        // Find domain (with fuzzy matching)
+        let domain = match self.matcher.find_domain(domain_token, cache) {
+            MatchResult::Single(m) => m.item,
+            _ => {
+                // Try as-is if not found
+                domain_token.to_string()
+            }
+        };
+
+        // Look up the action mapping for the service
+        let action = match self.find_action(service_token) {
+            Some(a) => a,
+            None => service_token.to_string(), // Use the service name directly
+        };
+
+        let mut result = ParsedCommand {
+            original: input.to_string(),
+            action: Some(action),
+            targets: Vec::new(),
+            parameters: HashMap::new(),
+            confidence: 0.8, // High confidence for explicit service syntax
+            interpretation: String::new(),
+            notes: Vec::new(),
+            matched_area: None,
+        };
+
+        // Parse remaining tokens for entity targets and parameters
+        let remaining = &tokens[3..];
+        let mut remaining_tokens: Vec<&str> = Vec::new();
+
+        for token in remaining {
+            // Check if it's a parameter
+            if let Some(pct) = parse_percentage(token) {
+                result
+                    .parameters
+                    .insert("brightness_pct".to_string(), pct.into());
+                continue;
+            }
+            if let Some(num) = parse_number(token) {
+                result.parameters.insert("value".to_string(), num.into());
+                continue;
+            }
+
+            // Otherwise it's part of entity name
+            remaining_tokens.push(token);
+        }
+
+        // Find entities
+        if !remaining_tokens.is_empty() {
+            let target_string = remaining_tokens.join(" ");
+            match self.matcher.find_entity(&target_string, cache) {
+                MatchResult::Single(m) => {
+                    result.targets.push(m.into());
+                }
+                MatchResult::Multiple(matches) => {
+                    // Filter by domain if possible
+                    let filtered: Vec<_> = matches
+                        .into_iter()
+                        .filter(|m| m.item.domain == domain)
+                        .collect();
+
+                    if filtered.len() == 1 {
+                        result.targets.push(filtered.into_iter().next().unwrap().into());
+                    } else if !filtered.is_empty() {
+                        for m in filtered.into_iter().take(5) {
+                            result.targets.push(m.into());
+                        }
+                        result.notes.push("Multiple matches found".to_string());
+                    } else {
+                        result.notes.push("No entities found in specified domain".to_string());
+                    }
+                }
+                MatchResult::None => {
+                    // Try to get all entities in domain
+                    let entities = self.matcher.find_entities_in_domain(&domain, cache);
+                    for entity in entities.into_iter().take(10) {
+                        result.targets.push(ParsedTarget {
+                            entity_id: entity.entity_id.clone(),
+                            friendly_name: entity.friendly_name.clone(),
+                            match_type: "domain_match".to_string(),
+                            matched_input: domain.clone(),
+                        });
+                    }
+                    if result.targets.is_empty() {
+                        result.notes.push("No entities found".to_string());
+                    }
+                }
+            }
+        } else {
+            // No specific entity - target all in domain
+            let entities = self.matcher.find_entities_in_domain(&domain, cache);
+            for entity in entities.into_iter().take(10) {
+                result.targets.push(ParsedTarget {
+                    entity_id: entity.entity_id.clone(),
+                    friendly_name: entity.friendly_name.clone(),
+                    match_type: "domain_match".to_string(),
+                    matched_input: domain.clone(),
+                });
+            }
+        }
+
+        result.interpretation = format!(
+            "{}.{} on {}",
+            domain,
+            result.action.as_deref().unwrap_or("unknown"),
+            if result.targets.is_empty() {
+                "all entities".to_string()
+            } else {
+                format!("{} entities", result.targets.len())
+            }
+        );
+
+        Ok(result)
+    }
 }
 
 /// Tokenize input into words, handling punctuation
@@ -484,6 +616,14 @@ impl ParsedCommand {
             .ok_or_else(|| anyhow!("Invalid entity ID: {}", first_entity))?
             .to_string();
 
+        // Check if action has domain-specific overrides
+        let mappings = action_mappings();
+        let service_name = mappings
+            .iter()
+            .find(|m| m.default_service == action)
+            .map(|m| m.service_for_domain(&domain))
+            .unwrap_or(action);
+
         let entity_ids: Vec<String> = self.targets.iter().map(|t| t.entity_id.clone()).collect();
 
         let mut data = serde_json::Map::new();
@@ -524,7 +664,7 @@ impl ParsedCommand {
 
         Ok(ServiceCall {
             domain,
-            service: action.to_string(),
+            service: service_name.to_string(),
             target: ServiceTarget {
                 entity_id: entity_ids,
                 area_id: None,

@@ -19,6 +19,7 @@ pub async fn execute(ctx: &RuntimeContext, command: HistoryCommand) -> Result<()
         HistoryCommand::Stats => stats(ctx),
         HistoryCommand::Clear => clear(ctx),
         HistoryCommand::Compact => compact(ctx),
+        HistoryCommand::Path => path(ctx),
     }
 }
 
@@ -245,6 +246,29 @@ fn compact(ctx: &RuntimeContext) -> Result<()> {
             println!("Compacted history: removed {} old entries.", removed);
         } else {
             println!("History is already compact.");
+        }
+    }
+
+    Ok(())
+}
+
+fn path(ctx: &RuntimeContext) -> Result<()> {
+    use crate::history::history_path;
+
+    let path = history_path()?;
+
+    match ctx.output_format() {
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::json!({ "path": path.display().to_string() })
+            );
+        }
+        OutputFormat::Yaml => {
+            println!("path: {}", path.display());
+        }
+        _ => {
+            println!("{}", path.display());
         }
     }
 

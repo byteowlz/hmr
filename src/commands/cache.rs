@@ -21,6 +21,8 @@ pub async fn execute(ctx: &RuntimeContext, command: CacheCommand) -> Result<()> 
         } => refresh(ctx, all, entities, areas, services, devices).await,
         CacheCommand::Clear => clear(ctx),
         CacheCommand::Path => path(ctx),
+        CacheCommand::EntityInfo { entity_id } => entity_info(ctx, &entity_id).await,
+        CacheCommand::AreaInfo { area } => area_info(ctx, &area).await,
     }
 }
 
@@ -324,4 +326,161 @@ fn format_count(status: &crate::cache::CacheStatus, cache_type: &str) -> String 
             .unwrap_or("-".to_string()),
         _ => "-".to_string(),
     }
+}
+
+async fn entity_info(ctx: &RuntimeContext, entity_id: &str) -> Result<()> {
+    use crate::fuzzy::{format_correction, FuzzyMatcher};
+
+    let mut manager = CacheManager::new(ctx)?;
+    
+    // Ensure cache is available
+    let entities = manager.ensure_entities().await?;
+    
+    if entities.is_empty() {
+        println!("No entities in cache. Run 'hmr cache refresh' first.");
+        return Ok(());
+    }
+
+    let matcher = FuzzyMatcher::new();
+    let result = matcher.find_entity(entity_id, manager.cache());
+
+    match result {
+        crate::fuzzy::MatchResult::Single(m) => {
+            // Show correction if it was a fuzzy/typo match
+            if !matches!(m.match_type, crate::fuzzy::MatchType::Exact) {
+                if !ctx.global.quiet {
+                    println!("Matched: {}", format_correction(entity_id, &m.matched_on));
+                    println!();
+                }
+            }
+
+            match ctx.output_format() {
+                OutputFormat::Json => {
+                    print_output(ctx, &m.item)?;
+                }
+                OutputFormat::Yaml => {
+                    println!("{}", serde_yaml::to_string(&m.item)?);
+                }
+                _ => {
+                    println!("Entity ID: {}", m.item.entity_id);
+                    println!("Domain: {}", m.item.domain);
+                    println!("Object ID: {}", m.item.object_id);
+                    println!("State: {}", m.item.state);
+                    if let Some(ref name) = m.item.friendly_name {
+                        println!("Friendly Name: {}", name);
+                    }
+                    if let Some(ref area_id) = m.item.area_id {
+                        println!("Area ID: {}", area_id);
+                    }
+                }
+            }
+        }
+        crate::fuzzy::MatchResult::Multiple(matches) => {
+            println!("Multiple matches found:");
+            for (idx, m) in matches.iter().enumerate().take(10) {
+                let name = m
+                    .item
+                    .friendly_name
+                    .as_deref()
+                    .unwrap_or(&m.item.entity_id);
+                println!(
+                    "  {}. {} ({}) - {}",
+                    idx + 1,
+                    m.item.entity_id,
+                    name,
+                    format!("{:?}", m.match_type)
+                );
+            }
+            if matches.len() > 10 {
+                println!("  ... and {} more", matches.len() - 10);
+            }
+        }
+        crate::fuzzy::MatchResult::None => {
+            println!("No matching entity found for: {}", entity_id);
+        }
+    }
+
+    Ok(())
+}
+
+async fn area_info(ctx: &RuntimeContext, area: &str) -> Result<()> {
+    use crate::fuzzy::{format_correction, FuzzyMatcher};
+
+    let mut manager = CacheManager::new(ctx)?;
+    
+    // Ensure cache is available
+    let areas = manager.ensure_areas().await?;
+    
+    if areas.is_empty() {
+        println!("No areas in cache. Run 'hmr cache refresh' first.");
+        return Ok(());
+    }
+
+    let matcher = FuzzyMatcher::new();
+    let result = matcher.find_area(area, manager.cache());
+
+    match result {
+        crate::fuzzy::MatchResult::Single(m) => {
+            // Show correction if it was a fuzzy/typo match
+            if !matches!(m.match_type, crate::fuzzy::MatchType::Exact) {
+                if !ctx.global.quiet {
+                    println!("Matched: {}", format_correction(area, &m.matched_on));
+                    println!();
+                }
+            }
+
+            match ctx.output_format() {
+                OutputFormat::Json => {
+                    print_output(ctx, &m.item)?;
+                }
+                OutputFormat::Yaml => {
+                    println!("{}", serde_yaml::to_string(&m.item)?);
+                }
+                _ => {
+                    println!("Area ID: {}", m.item.area_id);
+                    println!("Name: {}", m.item.name);
+                    if !m.item.aliases.is_empty() {
+                        println!("Aliases: {}", m.item.aliases.join(", "));
+                    }
+                    
+                    // Show entities in this area
+                    let entities_in_area = manager.cache().entities_in_area(&m.item.area_id);
+                    if !entities_in_area.is_empty() {
+                        println!();
+                        println!("Entities in this area ({}):", entities_in_area.len());
+                        for entity in entities_in_area.iter().take(20) {
+                            let name = entity
+                                .friendly_name
+                                .as_deref()
+                                .unwrap_or(&entity.entity_id);
+                            println!("  {} ({})", entity.entity_id, name);
+                        }
+                        if entities_in_area.len() > 20 {
+                            println!("  ... and {} more", entities_in_area.len() - 20);
+                        }
+                    }
+                }
+            }
+        }
+        crate::fuzzy::MatchResult::Multiple(matches) => {
+            println!("Multiple matches found:");
+            for (idx, m) in matches.iter().enumerate().take(10) {
+                println!(
+                    "  {}. {} - {} ({:?})",
+                    idx + 1,
+                    m.item.area_id,
+                    m.item.name,
+                    m.match_type
+                );
+            }
+            if matches.len() > 10 {
+                println!("  ... and {} more", matches.len() - 10);
+            }
+        }
+        crate::fuzzy::MatchResult::None => {
+            println!("No matching area found for: {}", area);
+        }
+    }
+
+    Ok(())
 }

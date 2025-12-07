@@ -75,6 +75,17 @@ pub async fn execute(ctx: &RuntimeContext, cmd: DoCommand) -> Result<()> {
     if !ctx.global.quiet {
         println!("Interpreted as: {}", parsed.interpretation);
 
+        // Show typo corrections for non-exact matches
+        for target in &parsed.targets {
+            if target.match_type != "Exact" {
+                use crate::fuzzy::format_correction;
+                println!(
+                    "  Matched: {}",
+                    format_correction(&target.matched_input, &target.entity_id)
+                );
+            }
+        }
+
         if !parsed.notes.is_empty() {
             for note in &parsed.notes {
                 println!("Note: {}", note);

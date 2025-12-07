@@ -120,7 +120,7 @@ pub enum MatchType {
 
 impl MatchType {
     /// Get a priority for sorting (lower is better)
-    fn priority(&self) -> u8 {
+    pub fn priority(&self) -> u8 {
         match self {
             MatchType::Exact => 0,
             MatchType::Prefix => 1,
@@ -293,9 +293,14 @@ impl FuzzyMatcher {
         }
 
         fuzzy_matches.sort_by(|a, b| {
-            b.confidence
-                .partial_cmp(&a.confidence)
-                .unwrap_or(Ordering::Equal)
+            // Sort by match type priority first, then by confidence
+            match a.match_type.priority().cmp(&b.match_type.priority()) {
+                Ordering::Equal => b
+                    .confidence
+                    .partial_cmp(&a.confidence)
+                    .unwrap_or(Ordering::Equal),
+                other => other,
+            }
         });
 
         if fuzzy_matches.len() == 1 {

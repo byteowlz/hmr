@@ -198,6 +198,9 @@ pub enum HistoryCommand {
 
     /// Compact history file
     Compact,
+
+    /// Print history file path
+    Path,
 }
 
 #[derive(Debug, Args)]
@@ -252,6 +255,18 @@ pub enum CacheCommand {
 
     /// Print cache directory path
     Path,
+
+    /// Lookup entity information from cache
+    EntityInfo {
+        /// Entity ID or friendly name
+        entity_id: String,
+    },
+
+    /// Lookup area information from cache
+    AreaInfo {
+        /// Area name or ID
+        area: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
