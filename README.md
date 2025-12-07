@@ -64,7 +64,28 @@ Override with `--config <path>` or `HMR_CONFIG` env var.
 
 See `examples/config.toml` for a complete example with comments.
 
+## Features
+
+- **Natural Language**: Use conversational commands like "turn on kitchen light" or "dim bedroom to 50%"
+- **Fuzzy Matching**: Typo-tolerant entity and service matching with auto-correction
+- **Smart Caching**: Fast entity lookups with intelligent cache management
+- **Multi-Device Control**: Target multiple entities at once using lists, areas, or patterns
+- **Command History**: Context-aware follow-up commands with accuracy tracking
+- **Real-time Updates**: WebSocket support for watching entity states and events
+- **Cross-Platform**: Works on Windows, Linux, and macOS with consistent behavior
+
 ## Commands
+
+### Natural Language
+
+```bash
+hmr do "turn on kitchen light"
+hmr do "dim bedroom to 50%"
+hmr do "set all living room lights to blue"
+hmr do brighter                    # Context-aware follow-up
+```
+
+The `do` command accepts natural language input and automatically resolves entities, services, and parameters using fuzzy matching and caching.
 
 ### Entity Management
 
@@ -118,6 +139,26 @@ hmr device list
 hmr device assign "Living Room" <device_id>
 hmr device update <device_id> --json '{"name_by_user": "My Device"}'
 ```
+
+### Cache Management
+
+```bash
+hmr cache status                   # Show cache info and TTL
+hmr cache refresh                  # Force refresh all cached data
+hmr cache clear                    # Clear all cached data
+```
+
+The cache stores entities, services, areas, devices, and labels at `$XDG_CACHE_HOME/hmr/` with configurable TTL.
+
+### Command History
+
+```bash
+hmr history list                   # Show command history
+hmr history stats                  # Show accuracy statistics
+hmr history clear                  # Clear history
+```
+
+History tracks natural language commands, match types, and context for follow-up commands.
 
 ### Configuration
 
@@ -217,12 +258,14 @@ cargo run -- --help                # Run in development
 
 ### Recent Changes
 
-- Implemented match type tracking for natural language commands (Exact, Fuzzy, Typo)
-- Added area extraction and context tracking in command history
-- Implemented accuracy statistics recording (fuzzy matches, typos, ambiguous prompts, failures)
-- Enhanced command output to show match types for non-exact matches
+- Natural language command parsing: "turn on kitchen light" now works
+- Fuzzy matching with typo correction for entity IDs, services, and domains
+- Entity caching system for faster lookups with automatic TTL management
+- Multi-device targeting: control multiple entities in a single command
+- Command history and context memory with accuracy statistics
+- Area management via WebSocket API (list, create, delete)
+- Security fixes: token protection, input validation, config file permissions
 - All 90 tests passing
-- Remaining warnings are for public API methods reserved for future use
 
 ## License
 
