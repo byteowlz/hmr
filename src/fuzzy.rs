@@ -576,12 +576,12 @@ impl FuzzyMatcher {
 
         // Try exact domain match first
         let mut entities = cache.entities_in_domain(&domain_lower);
-        
+
         // If domain might be plural, also try singular form
         if entities.is_empty() && domain_lower != singular {
             entities = cache.entities_in_domain(&singular);
         }
-        
+
         entities
     }
 

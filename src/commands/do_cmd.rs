@@ -24,7 +24,7 @@ pub async fn execute(ctx: &RuntimeContext, cmd: DoCommand) -> Result<()> {
 
     // Ensure we have cached entities and services for matching
     cache_manager.ensure_entities().await?;
-    
+
     // Also ensure services are cached for better service matching in nl commands
     if !cache_manager.cache().has_services() && !ctx.global.quiet {
         if !ctx.global.quiet {
@@ -75,13 +75,17 @@ pub async fn execute(ctx: &RuntimeContext, cmd: DoCommand) -> Result<()> {
     }
 
     // Check if we have low confidence matches - warn the user
-    let low_confidence_matches = parsed.targets.iter()
+    let low_confidence_matches = parsed
+        .targets
+        .iter()
         .filter(|t| t.match_type.contains("Fuzzy") || t.match_type.contains("domain_match"))
         .count();
-    
+
     if low_confidence_matches > 0 && low_confidence_matches == parsed.targets.len() {
         if !ctx.global.quiet {
-            eprintln!("Warning: All matches have low confidence. Results may not be what you expect.");
+            eprintln!(
+                "Warning: All matches have low confidence. Results may not be what you expect."
+            );
             eprintln!("Consider using more specific entity names or refreshing the cache.");
         }
     }
@@ -278,7 +282,7 @@ fn record_failure(input: &str, error: &str) -> Result<()> {
     let entry = HistoryEntry::new(input, "").with_error(error);
 
     history.append(&entry)?;
-    
+
     // Record failure in stats
     history.stats_mut().record_failure();
     history.save_stats()?;

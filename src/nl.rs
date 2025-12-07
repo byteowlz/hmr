@@ -162,7 +162,7 @@ impl From<Match<&CachedEntity>> for ParsedTarget {
             match_type: match_type_str,
             matched_input: String::new(), // Will be set below
         });
-        
+
         ParsedTarget {
             matched_input: mapped.matched_input,
             ..mapped.item
@@ -282,7 +282,7 @@ impl NLParser {
                         MatchType::Typo { .. } => 0.6,
                         MatchType::Fuzzy => 0.65,
                     };
-                    
+
                     if m.confidence >= min_confidence {
                         result.targets.push(m.into());
                     }
@@ -380,7 +380,7 @@ impl NLParser {
             let domain = domain_hint.as_ref().unwrap();
             let entities = self.matcher.find_entities_in_domain(domain, cache);
             let entity_count = entities.len();
-            
+
             // Only use domain-based fallback if there are a reasonable number of entities
             // Don't target all 50+ lights just because we couldn't find a specific match
             if !entities.is_empty() && entity_count <= 15 {
@@ -418,7 +418,8 @@ impl NLParser {
     }
 
     fn find_action(&self, token: &str) -> Option<String> {
-        self.find_action_with_mapping(token).map(|(action, _)| action)
+        self.find_action_with_mapping(token)
+            .map(|(action, _)| action)
     }
 
     fn find_action_with_mapping(&self, token: &str) -> Option<(String, &ActionMapping)> {
@@ -496,7 +497,12 @@ impl NLParser {
     }
 
     /// Parse service-based command: "call <domain> <service> [entity] [params]"
-    fn parse_service_based(&self, input: &str, tokens: &[&str], cache: &Cache) -> Result<ParsedCommand> {
+    fn parse_service_based(
+        &self,
+        input: &str,
+        tokens: &[&str],
+        cache: &Cache,
+    ) -> Result<ParsedCommand> {
         // Format: call <domain> <service> [rest...]
         // Examples:
         //   call light turn_on kitchen
@@ -505,7 +511,7 @@ impl NLParser {
 
         let domain_token = tokens[1];
         let service_token = tokens[2];
-        
+
         // Find domain (with fuzzy matching)
         let domain = match self.matcher.find_domain(domain_token, cache) {
             MatchResult::Single(m) => m.item,
@@ -517,13 +523,18 @@ impl NLParser {
 
         // Try to find the service using fuzzy matching first
         let full_service_name = format!("{}.{}", domain, service_token);
-        let action = if let MatchResult::Single(service_match) = self.matcher.find_service(&full_service_name, cache) {
+        let action = if let MatchResult::Single(service_match) =
+            self.matcher.find_service(&full_service_name, cache)
+        {
             // Use the matched service name
             service_match.item.service.clone()
         } else {
             // Check if this service exists for the domain using cache
             let domain_services = cache.services_for_domain(&domain);
-            if let Some(matching_service) = domain_services.iter().find(|s| s.eq_ignore_ascii_case(service_token)) {
+            if let Some(matching_service) = domain_services
+                .iter()
+                .find(|s| s.eq_ignore_ascii_case(service_token))
+            {
                 matching_service.clone()
             } else {
                 // Look up the action mapping for the service
@@ -581,14 +592,18 @@ impl NLParser {
                         .collect();
 
                     if filtered.len() == 1 {
-                        result.targets.push(filtered.into_iter().next().unwrap().into());
+                        result
+                            .targets
+                            .push(filtered.into_iter().next().unwrap().into());
                     } else if !filtered.is_empty() {
                         for m in filtered.into_iter().take(5) {
                             result.targets.push(m.into());
                         }
                         result.notes.push("Multiple matches found".to_string());
                     } else {
-                        result.notes.push("No entities found in specified domain".to_string());
+                        result
+                            .notes
+                            .push("No entities found in specified domain".to_string());
                     }
                 }
                 MatchResult::None => {

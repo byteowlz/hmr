@@ -20,19 +20,14 @@ const PLURALS: &[(&str, &str)] = &[
 ];
 
 /// Common action verbs that can be reordered
-const ACTIONS: &[&str] = &["list", "show", "get", "call", "watch", "create", "delete", "update", "assign"];
+const ACTIONS: &[&str] = &[
+    "list", "show", "get", "call", "watch", "create", "delete", "update", "assign",
+];
 
 /// Resource types that support actions
 const RESOURCES: &[&str] = &[
-    "entity", "entities",
-    "service", "services", 
-    "event", "events",
-    "area", "areas",
-    "device", "devices",
-    "cache",
-    "config",
-    "history",
-    "template",
+    "entity", "entities", "service", "services", "event", "events", "area", "areas", "device",
+    "devices", "cache", "config", "history", "template",
 ];
 
 /// Normalize command arguments to canonical form
@@ -43,19 +38,19 @@ const RESOURCES: &[&str] = &[
 /// - Common aliases (show -> info, get -> list)
 pub fn normalize_args() -> Vec<String> {
     let args: Vec<String> = env::args().collect();
-    
+
     // Need at least: program_name + command
     if args.len() < 2 {
         return args;
     }
-    
+
     // Skip the program name
     let program_name = args[0].clone();
     let rest = &args[1..];
-    
+
     // Normalize the command portion
     let normalized = normalize_command(rest);
-    
+
     // Rebuild args
     let mut result = vec![program_name];
     result.extend(normalized);
@@ -66,27 +61,27 @@ fn normalize_command(args: &[String]) -> Vec<String> {
     if args.is_empty() {
         return args.to_vec();
     }
-    
+
     let first = args[0].to_lowercase();
-    
+
     // Handle standalone commands (info, completions)
     if first == "info" || first == "completions" {
         return args.to_vec();
     }
-    
+
     // Normalize action aliases (show -> list, get -> list)
     let normalized_action = normalize_action(&first);
-    
+
     // Check if first word is an action
     if ACTIONS.contains(&normalized_action.as_str()) {
         // Pattern: <action> <resource> [args...]
         // Transform to: <resource> <action> [args...]
         if args.len() >= 2 {
             let second = args[1].to_lowercase();
-            
+
             // Normalize resource (plural -> singular for canonical form)
             let resource = normalize_resource(&second);
-            
+
             if RESOURCES.contains(&resource.as_str()) {
                 let mut result = vec![resource, normalized_action];
                 result.extend_from_slice(&args[2..]);
@@ -94,7 +89,7 @@ fn normalize_command(args: &[String]) -> Vec<String> {
             }
         }
     }
-    
+
     // Check if first word is a resource
     let normalized_first = normalize_resource(&first);
     if RESOURCES.contains(&normalized_first.as_str()) {
@@ -109,12 +104,12 @@ fn normalize_command(args: &[String]) -> Vec<String> {
         }
         return result;
     }
-    
+
     // Special case: "show info" -> "info"
     if (first == "show" || first == "get") && args.len() >= 2 && args[1].to_lowercase() == "info" {
         return vec!["info".to_string()];
     }
-    
+
     // No transformation needed
     args.to_vec()
 }
@@ -132,7 +127,7 @@ fn normalize_action(action: &str) -> String {
 /// Normalize a resource name (handle singular/plural)
 fn normalize_resource(resource: &str) -> String {
     let lower = resource.to_lowercase();
-    
+
     // Check if it's already singular
     for (singular, plural) in PLURALS {
         if lower == *plural {
@@ -142,7 +137,7 @@ fn normalize_resource(resource: &str) -> String {
             return singular.to_string();
         }
     }
-    
+
     // Return as-is (might be cache, config, etc.)
     lower
 }

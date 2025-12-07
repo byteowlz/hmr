@@ -29,7 +29,7 @@ pub async fn execute(ctx: &RuntimeContext, command: CacheCommand) -> Result<()> 
 async fn status(ctx: &RuntimeContext) -> Result<()> {
     let server_url = ctx.server_url().unwrap_or("unknown");
     let status = cache_status(server_url)?;
-    
+
     // Load cache to show cache statistics
     let manager = CacheManager::new(ctx)?;
     let cache = manager.cache();
@@ -45,14 +45,27 @@ async fn status(ctx: &RuntimeContext) -> Result<()> {
             println!("Cache directory: {}", status.cache_dir.display());
             println!("Server: {}", server_url);
             println!();
-            
+
             // Show cache availability status
-            if cache.has_entities() || cache.has_areas() || cache.has_services() || cache.has_devices() {
+            if cache.has_entities()
+                || cache.has_areas()
+                || cache.has_services()
+                || cache.has_devices()
+            {
                 println!("Cache availability:");
-                println!("  Entities:  {}", if cache.has_entities() { "✓" } else { "✗" });
+                println!(
+                    "  Entities:  {}",
+                    if cache.has_entities() { "✓" } else { "✗" }
+                );
                 println!("  Areas:     {}", if cache.has_areas() { "✓" } else { "✗" });
-                println!("  Services:  {}", if cache.has_services() { "✓" } else { "✗" });
-                println!("  Devices:   {}", if cache.has_devices() { "✓" } else { "✗" });
+                println!(
+                    "  Services:  {}",
+                    if cache.has_services() { "✓" } else { "✗" }
+                );
+                println!(
+                    "  Devices:   {}",
+                    if cache.has_devices() { "✓" } else { "✗" }
+                );
                 println!();
             }
 
@@ -346,10 +359,10 @@ async fn entity_info(ctx: &RuntimeContext, entity_id: &str) -> Result<()> {
     use crate::fuzzy::{format_correction, FuzzyMatcher};
 
     let mut manager = CacheManager::new(ctx)?;
-    
+
     // Ensure cache is available
     let entities = manager.ensure_entities().await?;
-    
+
     if entities.is_empty() {
         println!("No entities in cache. Run 'hmr cache refresh' first.");
         return Ok(());
@@ -383,7 +396,7 @@ async fn entity_info(ctx: &RuntimeContext, entity_id: &str) -> Result<()> {
     // Fall back to fuzzy matching
     let matcher = FuzzyMatcher::new();
     let result = matcher.find_entity(entity_id, manager.cache());
-    
+
     let is_exact = result.is_exact();
     match result {
         crate::fuzzy::MatchResult::Single(m) => {
@@ -419,11 +432,7 @@ async fn entity_info(ctx: &RuntimeContext, entity_id: &str) -> Result<()> {
         crate::fuzzy::MatchResult::Multiple(matches) => {
             println!("Multiple matches found:");
             for (idx, m) in matches.iter().enumerate().take(10) {
-                let name = m
-                    .item
-                    .friendly_name
-                    .as_deref()
-                    .unwrap_or(&m.item.entity_id);
+                let name = m.item.friendly_name.as_deref().unwrap_or(&m.item.entity_id);
                 println!(
                     "  {}. {} ({}) - {}",
                     idx + 1,
@@ -448,10 +457,10 @@ async fn area_info(ctx: &RuntimeContext, area: &str) -> Result<()> {
     use crate::fuzzy::{format_correction, FuzzyMatcher};
 
     let mut manager = CacheManager::new(ctx)?;
-    
+
     // Ensure cache is available
     let areas = manager.ensure_areas().await?;
-    
+
     if areas.is_empty() {
         println!("No areas in cache. Run 'hmr cache refresh' first.");
         return Ok(());
@@ -472,17 +481,14 @@ async fn area_info(ctx: &RuntimeContext, area: &str) -> Result<()> {
                 if !area_item.aliases.is_empty() {
                     println!("Aliases: {}", area_item.aliases.join(", "));
                 }
-                
+
                 // Show entities in this area
                 let entities_in_area = manager.cache().entities_in_area(&area_item.area_id);
                 if !entities_in_area.is_empty() {
                     println!();
                     println!("Entities in this area ({}):", entities_in_area.len());
                     for entity in entities_in_area.iter().take(20) {
-                        let name = entity
-                            .friendly_name
-                            .as_deref()
-                            .unwrap_or(&entity.entity_id);
+                        let name = entity.friendly_name.as_deref().unwrap_or(&entity.entity_id);
                         println!("  {} ({})", entity.entity_id, name);
                     }
                     if entities_in_area.len() > 20 {
@@ -497,7 +503,7 @@ async fn area_info(ctx: &RuntimeContext, area: &str) -> Result<()> {
     // Fall back to fuzzy matching
     let matcher = FuzzyMatcher::new();
     let result = matcher.find_area(area, manager.cache());
-    
+
     let is_exact = result.is_exact();
     match result {
         crate::fuzzy::MatchResult::Single(m) => {
@@ -522,17 +528,14 @@ async fn area_info(ctx: &RuntimeContext, area: &str) -> Result<()> {
                     if !m.item.aliases.is_empty() {
                         println!("Aliases: {}", m.item.aliases.join(", "));
                     }
-                    
+
                     // Show entities in this area
                     let entities_in_area = manager.cache().entities_in_area(&m.item.area_id);
                     if !entities_in_area.is_empty() {
                         println!();
                         println!("Entities in this area ({}):", entities_in_area.len());
                         for entity in entities_in_area.iter().take(20) {
-                            let name = entity
-                                .friendly_name
-                                .as_deref()
-                                .unwrap_or(&entity.entity_id);
+                            let name = entity.friendly_name.as_deref().unwrap_or(&entity.entity_id);
                             println!("  {} ({})", entity.entity_id, name);
                         }
                         if entities_in_area.len() > 20 {

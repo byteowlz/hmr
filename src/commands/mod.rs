@@ -1,5 +1,6 @@
 //! Command implementations
 
+pub mod agent;
 pub mod area;
 pub mod cache;
 pub mod completions;

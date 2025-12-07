@@ -166,6 +166,10 @@ pub enum Command {
         #[arg(value_enum)]
         shell: Shell,
     },
+
+    /// Use Home Assistant's conversation agent for natural language processing
+    #[command(name = "agent", alias = "ask")]
+    Agent(AgentCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -431,4 +435,23 @@ pub enum ConfigCommand {
 
     /// Reset configuration to defaults
     Reset,
+}
+
+#[derive(Debug, Args)]
+pub struct AgentCommand {
+    /// The natural language command to send to the agent
+    #[arg(trailing_var_arg = true, required = true)]
+    pub words: Vec<String>,
+
+    /// Language code (e.g., 'en', 'de', 'fr')
+    #[arg(short = 'l', long, default_value = "en")]
+    pub lang: String,
+
+    /// Conversation agent ID (defaults to built-in Home Assistant agent)
+    #[arg(long)]
+    pub agent_id: Option<String>,
+
+    /// Conversation ID to continue a previous conversation
+    #[arg(long)]
+    pub conversation_id: Option<String>,
 }

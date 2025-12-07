@@ -78,6 +78,8 @@ See `examples/config.toml` for a complete example with comments.
 
 ### Natural Language
 
+#### Local Processing (hmr do)
+
 ```bash
 hmr do "turn on kitchen light"
 hmr do "dim bedroom to 50%"
@@ -86,6 +88,22 @@ hmr do brighter                    # Context-aware follow-up
 ```
 
 The `do` command accepts natural language input and automatically resolves entities, services, and parameters using fuzzy matching and caching.
+
+#### Server-Side Processing (hmr agent)
+
+```bash
+hmr agent turn off light in kitchen
+hmr agent -l de schalte das licht im schlafzimmer aus
+hmr agent -l fr allume les lumières du salon
+```
+
+The `agent` command leverages Home Assistant's built-in conversation agent for natural language processing. This allows you to:
+
+- Use Home Assistant's server-side NLP engine
+- Leverage custom sentences defined in your HA config
+- Support multiple languages (use `-l` or `--lang` to specify)
+- Utilize intent scripts for complex multi-step operations
+- Continue conversations with `--conversation-id`
 
 ### Entity Management
 

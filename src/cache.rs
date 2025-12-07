@@ -498,12 +498,12 @@ impl<'a> CacheManager<'a> {
     }
 
     /// Get mutable cache for advanced operations
-    /// 
+    ///
     /// This allows direct modification of cache state for operations that need to:
     /// - Manually update cache entries after operations
     /// - Perform bulk cache modifications
     /// - Implement custom cache management strategies
-    /// 
+    ///
     /// For standard cache updates, prefer using the refresh_* methods.
     /// This is part of the public API for extensibility and plugins.
     pub fn cache_mut(&mut self) -> &mut Cache {
@@ -562,7 +562,7 @@ impl<'a> CacheManager<'a> {
         }
 
         let server_url = self.ctx.server_url()?.to_string();
-        
+
         // Use cache_mut for direct manipulation
         let cache = self.cache_mut();
         cache.set_services(CacheFile::new(cached, ttl::SERVICES, server_url));
@@ -962,5 +962,4 @@ mod tests {
         let dir = cache_dir().unwrap();
         assert!(dir.to_string_lossy().contains("hmr"));
     }
-
 }

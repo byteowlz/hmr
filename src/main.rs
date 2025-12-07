@@ -79,6 +79,10 @@ async fn run_command(ctx: &RuntimeContext, command: Command) -> Result<()> {
         Command::Do(cmd) => commands::do_cmd::execute(ctx, cmd).await,
         Command::History { command } => commands::history::execute(ctx, command).await,
         Command::Completions { shell } => commands::completions::run(shell),
+        Command::Agent(cmd) => {
+            let client = api::HassClient::new(ctx)?;
+            commands::agent::handle(&client, &cmd, ctx).await
+        }
     }
 }
 

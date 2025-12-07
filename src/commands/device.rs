@@ -63,16 +63,16 @@ async fn list(ctx: &RuntimeContext) -> Result<()> {
 async fn assign(ctx: &RuntimeContext, area: &str, device_id: &str) -> Result<()> {
     use crate::cache::CacheManager;
     use crate::fuzzy::{format_correction, FuzzyMatcher, MatchResult};
-    
+
     let mut client = WsClient::connect(ctx).await?;
 
     // Use fuzzy matching for area lookup
     let mut cache_manager = CacheManager::new(ctx)?;
     cache_manager.ensure_areas().await?;
-    
+
     let matcher = FuzzyMatcher::new();
     let area_result = matcher.find_area(area, cache_manager.cache());
-    
+
     let is_exact = area_result.is_exact();
     let area_obj = match area_result {
         MatchResult::Single(m) => {
@@ -82,7 +82,10 @@ async fn assign(ctx: &RuntimeContext, area: &str, device_id: &str) -> Result<()>
             m.item.clone()
         }
         MatchResult::Multiple(_) => {
-            return Err(anyhow!("Multiple areas match '{}'. Please be more specific.", area));
+            return Err(anyhow!(
+                "Multiple areas match '{}'. Please be more specific.",
+                area
+            ));
         }
         MatchResult::None => {
             return Err(anyhow!("Area not found: {}", area));
@@ -91,30 +94,33 @@ async fn assign(ctx: &RuntimeContext, area: &str, device_id: &str) -> Result<()>
 
     // Use fuzzy matching for device lookup by name
     cache_manager.ensure_devices().await?;
-    
+
     let devices = cache_manager.cache().devices();
-    let matched_device = devices.iter().find(|d| {
-        d.id == device_id
-            || d.name.as_deref() == Some(device_id)
-            || d.name_by_user.as_deref() == Some(device_id)
-    }).or_else(|| {
-        // Try fuzzy matching on device names
-        devices.iter().find(|d| {
-            d.search_names.iter().any(|name| name.eq_ignore_ascii_case(device_id))
+    let matched_device = devices
+        .iter()
+        .find(|d| {
+            d.id == device_id
+                || d.name.as_deref() == Some(device_id)
+                || d.name_by_user.as_deref() == Some(device_id)
         })
-    });
-    
-    let final_device_id = matched_device
-        .map(|d| d.id.as_str())
-        .unwrap_or(device_id);
-    
+        .or_else(|| {
+            // Try fuzzy matching on device names
+            devices.iter().find(|d| {
+                d.search_names
+                    .iter()
+                    .any(|name| name.eq_ignore_ascii_case(device_id))
+            })
+        });
+
+    let final_device_id = matched_device.map(|d| d.id.as_str()).unwrap_or(device_id);
+
     if matched_device.is_some() && final_device_id != device_id && !ctx.global.quiet {
         println!("Device matched: {} -> {}", device_id, final_device_id);
     }
 
     // Update the device with the area assignment
-    let request =
-        UpdateDeviceRequest::new(final_device_id.to_string()).with_area_id(area_obj.area_id.clone());
+    let request = UpdateDeviceRequest::new(final_device_id.to_string())
+        .with_area_id(area_obj.area_id.clone());
 
     let device = client.update_device(&request).await?;
 

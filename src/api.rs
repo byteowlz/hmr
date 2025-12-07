@@ -334,6 +334,33 @@ impl HassClient {
 
         response.text().await.context("reading template response")
     }
+
+    /// Process a conversation through Home Assistant's conversation agent
+    pub async fn process_conversation(
+        &self,
+        text: impl AsRef<str>,
+        language: Option<&str>,
+        agent_id: Option<&str>,
+        conversation_id: Option<&str>,
+    ) -> Result<ConversationResponse> {
+        let mut body = serde_json::json!({
+            "text": text.as_ref(),
+        });
+
+        if let Some(lang) = language {
+            body["language"] = serde_json::json!(lang);
+        }
+
+        if let Some(agent) = agent_id {
+            body["agent_id"] = serde_json::json!(agent);
+        }
+
+        if let Some(conv_id) = conversation_id {
+            body["conversation_id"] = serde_json::json!(conv_id);
+        }
+
+        self.post("/conversation/process", &body).await
+    }
 }
 
 // --- Request Types ---
@@ -494,6 +521,38 @@ pub struct ServiceInfo {
     pub fields: Value,
     #[serde(default)]
     pub target: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationResponse {
+    pub response: ConversationResponseData,
+    #[serde(default)]
+    pub conversation_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationResponseData {
+    pub response_type: String,
+    #[serde(default)]
+    pub speech: Option<ConversationSpeech>,
+    #[serde(default)]
+    pub card: Option<Value>,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub data: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationSpeech {
+    pub plain: ConversationPlainSpeech,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationPlainSpeech {
+    pub speech: String,
+    #[serde(default)]
+    pub extra_data: Option<Value>,
 }
 
 #[cfg(test)]
