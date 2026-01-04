@@ -17,7 +17,7 @@ pub async fn run(ctx: &RuntimeContext, command: EventCommand) -> Result<()> {
 
 async fn watch(ctx: &RuntimeContext, event_type: Option<&str>) -> Result<()> {
     if let Some(et) = event_type {
-        println!("Watching events of type: {}", et);
+        println!("Watching events of type: {et}");
     } else {
         println!("Watching all events");
     }
@@ -47,13 +47,13 @@ async fn watch(ctx: &RuntimeContext, event_type: Option<&str>) -> Result<()> {
                 if !event.data.is_null() && event.data != serde_json::json!({}) {
                     // Print compact data summary
                     if let Some(entity_id) = event.data.get("entity_id").and_then(|v| v.as_str()) {
-                        println!("  entity: {}", entity_id);
+                        println!("  entity: {entity_id}");
                     }
                     if let Some(domain) = event.data.get("domain").and_then(|v| v.as_str()) {
-                        println!("  domain: {}", domain);
+                        println!("  domain: {domain}");
                     }
                     if let Some(service) = event.data.get("service").and_then(|v| v.as_str()) {
-                        println!("  service: {}", service);
+                        println!("  service: {service}");
                     }
                 }
             }
@@ -71,12 +71,12 @@ async fn fire(ctx: &RuntimeContext, event_type: &str, data_input: Option<&str>) 
         .context("parsing JSON input")?
         .unwrap_or_else(|| serde_json::json!({}));
 
-    log::debug!("Firing event {} with data: {:?}", event_type, data);
+    log::debug!("Firing event {event_type} with data: {data:?}");
 
     let result = client.fire_event(event_type, &data).await?;
 
     output_for_format(ctx, &result, || {
-        println!("Event '{}' fired successfully", event_type);
+        println!("Event '{event_type}' fired successfully");
         Ok(())
     })
 }

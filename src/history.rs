@@ -64,7 +64,7 @@ impl HistoryEntry {
     }
 
     pub fn with_service(mut self, domain: &str, service: &str) -> Self {
-        self.service = Some(format!("{}.{}", domain, service));
+        self.service = Some(format!("{domain}.{service}"));
         self
     }
 
@@ -90,7 +90,7 @@ impl HistoryEntry {
 }
 
 /// Current command context for follow-up commands
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CommandContext {
     /// Last entities that were targeted
     pub last_entities: Vec<String>,
@@ -102,18 +102,6 @@ pub struct CommandContext {
     pub last_action: Option<String>,
     /// When the context was last updated
     pub updated_at: u64,
-}
-
-impl Default for CommandContext {
-    fn default() -> Self {
-        Self {
-            last_entities: Vec::new(),
-            last_area: None,
-            last_domain: None,
-            last_action: None,
-            updated_at: 0,
-        }
-    }
 }
 
 impl CommandContext {
@@ -333,7 +321,7 @@ impl History {
             .with_context(|| format!("opening history file {}", self.history_path.display()))?;
 
         let json = serde_json::to_string(entry)?;
-        writeln!(file, "{}", json)?;
+        writeln!(file, "{json}")?;
 
         Ok(())
     }
@@ -349,7 +337,7 @@ impl History {
 
         let entries: Vec<HistoryEntry> = reader
             .lines()
-            .filter_map(|line| line.ok())
+            .map_while(Result::ok)
             .filter_map(|line| serde_json::from_str(&line).ok())
             .collect();
 
@@ -376,7 +364,7 @@ impl History {
 
         let entries: Vec<HistoryEntry> = reader
             .lines()
-            .filter_map(|line| line.ok())
+            .map_while(Result::ok)
             .filter_map(|line| serde_json::from_str::<HistoryEntry>(&line).ok())
             .filter(|e| {
                 e.input.to_lowercase().contains(&pattern_lower)
@@ -407,7 +395,7 @@ impl History {
         let file = File::open(&self.history_path)?;
         let reader = BufReader::new(file);
 
-        let entries: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+        let entries: Vec<String> = reader.lines().map_while(Result::ok).collect();
         let original_count = entries.len();
 
         if entries.len() <= MAX_HISTORY_ENTRIES {
@@ -421,7 +409,7 @@ impl History {
         // Write back
         let mut file = File::create(&self.history_path)?;
         for entry in kept_entries {
-            writeln!(file, "{}", entry)?;
+            writeln!(file, "{entry}")?;
         }
 
         Ok(original_count - MAX_HISTORY_ENTRIES)

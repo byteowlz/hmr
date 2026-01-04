@@ -68,9 +68,8 @@ pub async fn execute(ctx: &RuntimeContext, cmd: DoCommand) -> Result<()> {
     if parsed.targets.is_empty() {
         record_failure(&input, "No matching entities found")?;
         return Err(anyhow!(
-            "Could not find any matching entities for: {}\n\
-            Try refreshing the cache with: hmr cache refresh",
-            input
+            "Could not find any matching entities for: {input}\n\
+            Try refreshing the cache with: hmr cache refresh"
         ));
     }
 
@@ -81,13 +80,12 @@ pub async fn execute(ctx: &RuntimeContext, cmd: DoCommand) -> Result<()> {
         .filter(|t| t.match_type.contains("Fuzzy") || t.match_type.contains("domain_match"))
         .count();
 
-    if low_confidence_matches > 0 && low_confidence_matches == parsed.targets.len() {
-        if !ctx.global.quiet {
-            eprintln!(
-                "Warning: All matches have low confidence. Results may not be what you expect."
-            );
-            eprintln!("Consider using more specific entity names or refreshing the cache.");
-        }
+    if low_confidence_matches > 0
+        && low_confidence_matches == parsed.targets.len()
+        && !ctx.global.quiet
+    {
+        eprintln!("Warning: All matches have low confidence. Results may not be what you expect.");
+        eprintln!("Consider using more specific entity names or refreshing the cache.");
     }
 
     // Show interpretation
@@ -107,7 +105,7 @@ pub async fn execute(ctx: &RuntimeContext, cmd: DoCommand) -> Result<()> {
 
         if !parsed.notes.is_empty() {
             for note in &parsed.notes {
-                println!("Note: {}", note);
+                println!("Note: {note}");
             }
             // Track that we had an ambiguous match
             if parsed.notes.iter().any(|n| n.contains("Multiple matches")) {
@@ -136,7 +134,7 @@ pub async fn execute(ctx: &RuntimeContext, cmd: DoCommand) -> Result<()> {
             println!();
             println!("Parameters:");
             for (key, value) in &parsed.parameters {
-                println!("  {}: {}", key, value);
+                println!("  {key}: {value}");
             }
         }
     }

@@ -1,0 +1,229 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v0.4.0)'
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          # macOS Intel (cross-compiled from ARM64 runner)
+          - target: x86_64-apple-darwin
+            os: macos-14
+            archive: tar.gz
+          # macOS Apple Silicon
+          - target: aarch64-apple-darwin
+            os: macos-14
+            archive: tar.gz
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czvf ../../../hmr-${{ env.RELEASE_TAG }}-${{ matrix.target }}.tar.gz hmr
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hmr-${{ matrix.target }}
+          path: hmr-${{ env.RELEASE_TAG }}-${{ matrix.target }}.*
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          find . -type f -name "*.tar.gz" -exec mv {} . \;
+          sha256sum *.tar.gz > checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          generate_release_notes: true
+          files: |
+            artifacts/*.tar.gz
+            artifacts/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-homebrew:
+    name: Publish to Homebrew
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Homebrew tap
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          repository: byteowlz/homebrew-tap
+          event-type: update-formula
+          client-payload: |
+            {
+              "formula": "hmr",
+              "version": "${{ env.RELEASE_TAG }}",
+              "repo": "${{ github.repository }}"
+            }
+
+  publish-aur:
+    name: Publish to AUR (hmr-bin)
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Generate PKGBUILD for hmr-bin
+        run: |
+          VERSION="${{ env.RELEASE_TAG }}"
+          VERSION="${VERSION#v}"  # Remove 'v' prefix
+          
+          # Download checksums
+          curl -sL "https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/checksums.txt" -o checksums.txt
+          
+          SHA256=$(grep "x86_64-unknown-linux-gnu.tar.gz" checksums.txt | cut -d' ' -f1)
+          
+          cat > PKGBUILD << 'EOF'
+          # Maintainer: Tommy Falkowski <tommy@byteowlz.com>
+          pkgname=hmr-bin
+          pkgver=VERSION_PLACEHOLDER
+          pkgrel=1
+          pkgdesc="A slim, fast CLI for Home Assistant"
+          arch=('x86_64')
+          url="https://github.com/byteowlz/hmr"
+          license=('MIT')
+          provides=('hmr')
+          conflicts=('hmr')
+          depends=('gcc-libs')
+          source=("hmr-${pkgver}.tar.gz::https://github.com/byteowlz/hmr/releases/download/v${pkgver}/hmr-v${pkgver}-x86_64-unknown-linux-gnu.tar.gz")
+          sha256sums=('SHA256_PLACEHOLDER')
+          
+          package() {
+              install -Dm755 hmr "$pkgdir/usr/bin/hmr"
+          }
+          EOF
+          
+          # Replace placeholders
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" PKGBUILD
+          sed -i "s/SHA256_PLACEHOLDER/${SHA256}/g" PKGBUILD
+
+      - name: Publish hmr-bin to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        with:
+          pkgname: hmr-bin
+          pkgbuild: ./PKGBUILD
+          commit_username: byteowlz
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ env.RELEASE_TAG }}"
+
+  publish-aur-source:
+    name: Publish to AUR (hmr)
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Generate PKGBUILD for hmr
+        run: |
+          VERSION="${{ env.RELEASE_TAG }}"
+          VERSION="${VERSION#v}"  # Remove 'v' prefix
+          
+          cat > PKGBUILD << 'EOF'
+          # Maintainer: Tommy Falkowski <tommy@byteowlz.com>
+          pkgname=hmr
+          pkgver=VERSION_PLACEHOLDER
+          pkgrel=1
+          pkgdesc="A slim, fast CLI for Home Assistant"
+          arch=('x86_64' 'aarch64')
+          url="https://github.com/byteowlz/hmr"
+          license=('MIT')
+          provides=('hmr')
+          conflicts=('hmr-bin')
+          makedepends=('cargo')
+          source=("${pkgname}-${pkgver}.tar.gz::https://github.com/byteowlz/hmr/archive/v${pkgver}.tar.gz")
+          sha256sums=('SKIP')
+          
+          prepare() {
+              cd "${pkgname}-${pkgver}"
+              export RUSTUP_TOOLCHAIN=stable
+              cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+          }
+          
+          build() {
+              cd "${pkgname}-${pkgver}"
+              export RUSTUP_TOOLCHAIN=stable
+              export CARGO_TARGET_DIR=target
+              cargo build --frozen --release
+          }
+          
+          package() {
+              cd "${pkgname}-${pkgver}"
+              install -Dm755 "target/release/hmr" "${pkgdir}/usr/bin/hmr"
+              install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+          }
+          EOF
+          
+          # Replace placeholders
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" PKGBUILD
+
+      - name: Publish hmr to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        with:
+          pkgname: hmr
+          pkgbuild: ./PKGBUILD
+          commit_username: byteowlz
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ env.RELEASE_TAG }}"

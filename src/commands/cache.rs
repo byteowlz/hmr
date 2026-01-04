@@ -43,7 +43,7 @@ async fn status(ctx: &RuntimeContext) -> Result<()> {
         }
         _ => {
             println!("Cache directory: {}", status.cache_dir.display());
-            println!("Server: {}", server_url);
+            println!("Server: {server_url}");
             println!();
 
             // Show cache availability status
@@ -307,7 +307,7 @@ fn path(ctx: &RuntimeContext) -> Result<()> {
 
 fn format_bytes(bytes: u64) -> String {
     if bytes < 1024 {
-        format!("{} B", bytes)
+        format!("{bytes} B")
     } else if bytes < 1024 * 1024 {
         format!("{:.1} KB", bytes as f64 / 1024.0)
     } else {
@@ -317,7 +317,7 @@ fn format_bytes(bytes: u64) -> String {
 
 fn format_duration(secs: u64) -> String {
     if secs < 60 {
-        format!("{}s", secs)
+        format!("{secs}s")
     } else if secs < 3600 {
         format!("{}m", secs / 60)
     } else if secs < 86400 {
@@ -383,10 +383,10 @@ async fn entity_info(ctx: &RuntimeContext, entity_id: &str) -> Result<()> {
                 println!("Object ID: {}", entity.object_id);
                 println!("State: {}", entity.state);
                 if let Some(ref name) = entity.friendly_name {
-                    println!("Friendly Name: {}", name);
+                    println!("Friendly Name: {name}");
                 }
                 if let Some(ref area_id) = entity.area_id {
-                    println!("Area ID: {}", area_id);
+                    println!("Area ID: {area_id}");
                 }
             }
         }
@@ -401,11 +401,9 @@ async fn entity_info(ctx: &RuntimeContext, entity_id: &str) -> Result<()> {
     match result {
         crate::fuzzy::MatchResult::Single(m) => {
             // Show correction if it was a fuzzy/typo match
-            if !is_exact {
-                if !ctx.global.quiet {
-                    println!("Matched: {}", format_correction(entity_id, &m.matched_on));
-                    println!();
-                }
+            if !is_exact && !ctx.global.quiet {
+                println!("Matched: {}", format_correction(entity_id, &m.matched_on));
+                println!();
             }
 
             match ctx.output_format() {
@@ -421,10 +419,10 @@ async fn entity_info(ctx: &RuntimeContext, entity_id: &str) -> Result<()> {
                     println!("Object ID: {}", m.item.object_id);
                     println!("State: {}", m.item.state);
                     if let Some(ref name) = m.item.friendly_name {
-                        println!("Friendly Name: {}", name);
+                        println!("Friendly Name: {name}");
                     }
                     if let Some(ref area_id) = m.item.area_id {
-                        println!("Area ID: {}", area_id);
+                        println!("Area ID: {area_id}");
                     }
                 }
             }
@@ -434,11 +432,11 @@ async fn entity_info(ctx: &RuntimeContext, entity_id: &str) -> Result<()> {
             for (idx, m) in matches.iter().enumerate().take(10) {
                 let name = m.item.friendly_name.as_deref().unwrap_or(&m.item.entity_id);
                 println!(
-                    "  {}. {} ({}) - {}",
+                    "  {}. {} ({}) - {:?}",
                     idx + 1,
                     m.item.entity_id,
                     name,
-                    format!("{:?}", m.match_type)
+                    m.match_type
                 );
             }
             if matches.len() > 10 {
@@ -446,7 +444,7 @@ async fn entity_info(ctx: &RuntimeContext, entity_id: &str) -> Result<()> {
             }
         }
         crate::fuzzy::MatchResult::None => {
-            println!("No matching entity found for: {}", entity_id);
+            println!("No matching entity found for: {entity_id}");
         }
     }
 
@@ -508,11 +506,9 @@ async fn area_info(ctx: &RuntimeContext, area: &str) -> Result<()> {
     match result {
         crate::fuzzy::MatchResult::Single(m) => {
             // Show correction if it was a fuzzy/typo match
-            if !is_exact {
-                if !ctx.global.quiet {
-                    println!("Matched: {}", format_correction(area, &m.matched_on));
-                    println!();
-                }
+            if !is_exact && !ctx.global.quiet {
+                println!("Matched: {}", format_correction(area, &m.matched_on));
+                println!();
             }
 
             match ctx.output_format() {
@@ -561,7 +557,7 @@ async fn area_info(ctx: &RuntimeContext, area: &str) -> Result<()> {
             }
         }
         crate::fuzzy::MatchResult::None => {
-            println!("No matching area found for: {}", area);
+            println!("No matching area found for: {area}");
         }
     }
 

@@ -83,12 +83,11 @@ async fn assign(ctx: &RuntimeContext, area: &str, device_id: &str) -> Result<()>
         }
         MatchResult::Multiple(_) => {
             return Err(anyhow!(
-                "Multiple areas match '{}'. Please be more specific.",
-                area
+                "Multiple areas match '{area}'. Please be more specific."
             ));
         }
         MatchResult::None => {
-            return Err(anyhow!("Area not found: {}", area));
+            return Err(anyhow!("Area not found: {area}"));
         }
     };
 
@@ -115,7 +114,7 @@ async fn assign(ctx: &RuntimeContext, area: &str, device_id: &str) -> Result<()>
     let final_device_id = matched_device.map(|d| d.id.as_str()).unwrap_or(device_id);
 
     if matched_device.is_some() && final_device_id != device_id && !ctx.global.quiet {
-        println!("Device matched: {} -> {}", device_id, final_device_id);
+        println!("Device matched: {device_id} -> {final_device_id}");
     }
 
     // Update the device with the area assignment

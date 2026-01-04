@@ -91,7 +91,7 @@ async fn call(
         serde_json::json!({})
     };
 
-    log::debug!("Calling {}.{} with data: {:?}", domain, service_name, data);
+    log::debug!("Calling {domain}.{service_name} with data: {data:?}");
 
     let result = client.call_service(domain, service_name, &data).await?;
 
@@ -104,7 +104,7 @@ async fn call(
                 for entity in arr {
                     if let Some(id) = entity.get("entity_id").and_then(|v| v.as_str()) {
                         let state = entity.get("state").and_then(|v| v.as_str()).unwrap_or("?");
-                        println!("  {} -> {}", id, state);
+                        println!("  {id} -> {state}");
                     }
                 }
             }

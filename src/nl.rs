@@ -115,6 +115,56 @@ pub fn action_mappings() -> Vec<ActionMapping> {
         infers_domain: true,
     });
 
+    // Volume up
+    let mut volume_up_overrides = HashMap::new();
+    volume_up_overrides.insert("media_player", "volume_up");
+    mappings.push(ActionMapping {
+        trigger_words: vec!["volume_up", "louder", "volume up"],
+        default_service: "volume_up",
+        domain_overrides: volume_up_overrides,
+        infers_domain: false, // Typically only for media_player
+    });
+
+    // Volume down
+    let mut volume_down_overrides = HashMap::new();
+    volume_down_overrides.insert("media_player", "volume_down");
+    mappings.push(ActionMapping {
+        trigger_words: vec!["volume_down", "quieter", "softer", "volume down"],
+        default_service: "volume_down",
+        domain_overrides: volume_down_overrides,
+        infers_domain: false,
+    });
+
+    // Volume set (for setting specific volume levels)
+    let mut volume_set_overrides = HashMap::new();
+    volume_set_overrides.insert("media_player", "volume_set");
+    mappings.push(ActionMapping {
+        trigger_words: vec!["volume_set", "volume"],
+        default_service: "volume_set",
+        domain_overrides: volume_set_overrides,
+        infers_domain: false,
+    });
+
+    // Mute
+    let mut mute_overrides = HashMap::new();
+    mute_overrides.insert("media_player", "volume_mute");
+    mappings.push(ActionMapping {
+        trigger_words: vec!["mute", "silence"],
+        default_service: "volume_mute",
+        domain_overrides: mute_overrides,
+        infers_domain: false,
+    });
+
+    // Unmute
+    let mut unmute_overrides = HashMap::new();
+    unmute_overrides.insert("media_player", "volume_mute");
+    mappings.push(ActionMapping {
+        trigger_words: vec!["unmute"],
+        default_service: "volume_mute",
+        domain_overrides: unmute_overrides,
+        infers_domain: false,
+    });
+
     mappings
 }
 
@@ -219,15 +269,49 @@ impl NLParser {
             matched_area: None,
         };
 
-        // Classify each token
+        // First, extract action from tokens
+        // Handle multi-word actions like "turn on", "turn off" by consuming "turn" with the action
         let mut action_found = false;
         let mut action_mapping: Option<&ActionMapping> = None;
-        let mut domain_hint: Option<String> = None;
-        let mut area_hint: Option<String> = None;
-        let mut remaining_tokens: Vec<&str> = Vec::new();
+        let mut non_action_tokens: Vec<&str> = Vec::new();
 
-        for token in &tokens {
-            // Check if it's an action verb
+        let mut skip_next = false;
+        for (i, token) in tokens.iter().enumerate() {
+            if skip_next {
+                skip_next = false;
+                continue;
+            }
+
+            // Skip "turn" if it precedes an action like "on" or "off"
+            if token.to_lowercase() == "turn" {
+                // Check if next token is an action
+                if let Some(next_token) = tokens.get(i + 1) {
+                    if self.find_action_with_mapping(next_token).is_some() {
+                        continue; // Skip "turn", the action will be found in next iteration
+                    }
+                }
+            }
+
+            // Handle "volume up" / "volume down" as compound actions
+            if token.to_lowercase() == "volume" {
+                if let Some(next_token) = tokens.get(i + 1) {
+                    let next_lower = next_token.to_lowercase();
+                    if next_lower == "up" && !action_found {
+                        result.action = Some("volume_up".to_string());
+                        action_mapping = self.actions.iter().find(|m| m.trigger_words.contains(&"volume_up"));
+                        action_found = true;
+                        skip_next = true;
+                        continue;
+                    } else if next_lower == "down" && !action_found {
+                        result.action = Some("volume_down".to_string());
+                        action_mapping = self.actions.iter().find(|m| m.trigger_words.contains(&"volume_down"));
+                        action_found = true;
+                        skip_next = true;
+                        continue;
+                    }
+                }
+            }
+
             if let Some((action, mapping)) = self.find_action_with_mapping(token) {
                 if !action_found {
                     result.action = Some(action);
@@ -236,19 +320,75 @@ impl NLParser {
                     continue;
                 }
             }
+            non_action_tokens.push(token);
+        }
 
+        // Determine if this is a volume-related action (used for parameter naming)
+        let is_volume_action = result
+            .action
+            .as_ref()
+            .is_some_and(|a| a.contains("volume") || a == "volume_set");
+
+        // PRIORITY 1: Try to match all non-action tokens as a combined entity name first
+        // This handles cases like "spots wohnzimmer" -> "spots.wohnzimmer" or "light.spots_wohnzimmer"
+        // Filter out numeric/percentage tokens that are likely parameters, not entity names
+        let entity_tokens: Vec<&str> = non_action_tokens
+            .iter()
+            .filter(|t| parse_number(t).is_none() && parse_percentage(t).is_none())
+            .copied()
+            .collect();
+        let full_entity_search = entity_tokens.join(" ");
+        if !full_entity_search.is_empty() {
+            if let MatchResult::Single(m) = self.matcher.find_entity(&full_entity_search, cache) {
+                let min_confidence = match m.match_type {
+                    MatchType::Exact | MatchType::Prefix => 0.0,
+                    MatchType::Typo { .. } => 0.6,
+                    MatchType::Fuzzy => 0.65,
+                };
+                if m.confidence >= min_confidence {
+                    result.targets.push(m.into());
+                    // Extract parameters from the filtered-out tokens
+                    for token in &non_action_tokens {
+                        if let Some(num) = parse_number(token) {
+                            result.parameters.insert("value".to_string(), num.into());
+                        } else if let Some(pct) = parse_percentage(token) {
+                            let param_name = if is_volume_action {
+                                "volume_pct"
+                            } else {
+                                "brightness_pct"
+                            };
+                            result.parameters.insert(param_name.to_string(), pct.into());
+                        }
+                    }
+                    result.confidence = self.calculate_confidence(&result);
+                    result.interpretation = self.build_interpretation(&result, &None);
+                    return Ok(result);
+                }
+            }
+        }
+
+        // PRIORITY 2: Classify remaining tokens
+        let mut domain_hint: Option<String> = None;
+        let mut area_hint: Option<String> = None;
+        let mut remaining_tokens: Vec<&str> = Vec::new();
+
+        for token in &non_action_tokens {
             // Check if it's a number (parameter)
             if let Some(num) = parse_number(token) {
-                // Could be brightness, temperature, etc.
+                // Could be brightness, temperature, volume, etc.
                 result.parameters.insert("value".to_string(), num.into());
                 continue;
             }
 
             // Check if it's a percentage
             if let Some(pct) = parse_percentage(token) {
-                result
-                    .parameters
-                    .insert("brightness_pct".to_string(), pct.into());
+                // Use volume_pct for volume actions, brightness_pct otherwise
+                let param_name = if is_volume_action {
+                    "volume_pct"
+                } else {
+                    "brightness_pct"
+                };
+                result.parameters.insert(param_name.to_string(), pct.into());
                 continue;
             }
 
@@ -269,38 +409,40 @@ impl NLParser {
             remaining_tokens.push(token);
         }
 
-        // Try to find entities from remaining tokens
-        let target_string = remaining_tokens.join(" ");
-        if !target_string.is_empty() {
-            // First try the full string
-            match self.matcher.find_entity(&target_string, cache) {
-                MatchResult::Single(m) => {
-                    // Only accept single matches with reasonable confidence
-                    // Exact and prefix matches are always fine, fuzzy needs higher threshold
+        // PRIORITY 3: If we have remaining tokens AND an area, try combining them
+        // e.g., "spots" + area "wohnzimmer" -> try "spots wohnzimmer", "spots_wohnzimmer"
+        if !remaining_tokens.is_empty() && area_hint.is_some() {
+            let area = area_hint.as_ref().unwrap();
+            let remaining_str = remaining_tokens.join(" ");
+
+            // Try various combinations
+            let combinations = vec![
+                format!("{} {}", remaining_str, area),
+                format!("{}_{}", remaining_str, area),
+                format!("{}.{}", remaining_str, area),
+            ];
+
+            for combo in combinations {
+                if let MatchResult::Single(m) = self.matcher.find_entity(&combo, cache) {
                     let min_confidence = match m.match_type {
                         MatchType::Exact | MatchType::Prefix => 0.0,
                         MatchType::Typo { .. } => 0.6,
                         MatchType::Fuzzy => 0.65,
                     };
-
                     if m.confidence >= min_confidence {
                         result.targets.push(m.into());
+                        break;
                     }
                 }
-                MatchResult::Multiple(matches) => {
-                    // If we have a domain hint, filter by it
-                    let filtered: Vec<_> = if let Some(ref domain) = domain_hint {
-                        matches
-                            .into_iter()
-                            .filter(|m| &m.item.domain == domain)
-                            .collect()
-                    } else {
-                        matches
-                    };
+            }
+        }
 
-                    if filtered.len() == 1 {
-                        let m = filtered.into_iter().next().unwrap();
-                        // Apply same confidence threshold for single filtered match
+        // PRIORITY 4: Try to find entities from remaining tokens alone
+        if result.targets.is_empty() {
+            let target_string = remaining_tokens.join(" ");
+            if !target_string.is_empty() {
+                match self.matcher.find_entity(&target_string, cache) {
+                    MatchResult::Single(m) => {
                         let min_confidence = match m.match_type {
                             MatchType::Exact | MatchType::Prefix => 0.0,
                             MatchType::Typo { .. } => 0.6,
@@ -309,30 +451,47 @@ impl NLParser {
                         if m.confidence >= min_confidence {
                             result.targets.push(m.into());
                         }
-                    } else if !filtered.is_empty() {
-                        // For multiple matches, only include high-confidence ones
-                        for m in filtered.into_iter().take(5) {
-                            if m.confidence >= 0.5 {
+                    }
+                    MatchResult::Multiple(matches) => {
+                        // If we have a domain hint, filter by it
+                        let filtered: Vec<_> = if let Some(ref domain) = domain_hint {
+                            matches
+                                .into_iter()
+                                .filter(|m| &m.item.domain == domain)
+                                .collect()
+                        } else {
+                            matches
+                        };
+
+                        if filtered.len() == 1 {
+                            let m = filtered.into_iter().next().unwrap();
+                            let min_confidence = match m.match_type {
+                                MatchType::Exact | MatchType::Prefix => 0.0,
+                                MatchType::Typo { .. } => 0.6,
+                                MatchType::Fuzzy => 0.65,
+                            };
+                            if m.confidence >= min_confidence {
                                 result.targets.push(m.into());
                             }
-                        }
-                        if !result.targets.is_empty() {
-                            result.notes.push("Multiple matches found".to_string());
+                        } else if !filtered.is_empty() {
+                            for m in filtered.into_iter().take(5) {
+                                if m.confidence >= 0.5 {
+                                    result.targets.push(m.into());
+                                }
+                            }
+                            if !result.targets.is_empty() {
+                                result.notes.push("Multiple matches found".to_string());
+                            }
                         }
                     }
-                }
-                MatchResult::None => {
-                    // Try individual tokens, but only accept high-confidence matches
-                    for token in &remaining_tokens {
-                        match self.matcher.find_entity(token, cache) {
-                            MatchResult::Single(m) => {
-                                // Only accept if confidence is reasonably high (> 0.7)
-                                // This prevents matching "schreibtisch" to "sun"
+                    MatchResult::None => {
+                        // Try individual tokens
+                        for token in &remaining_tokens {
+                            if let MatchResult::Single(m) = self.matcher.find_entity(token, cache) {
                                 if m.confidence > 0.7 {
                                     result.targets.push(m.into());
                                 }
                             }
-                            _ => {}
                         }
                     }
                 }
@@ -401,9 +560,7 @@ impl NLParser {
                 }
             } else if entity_count > 15 {
                 result.notes.push(format!(
-                    "No specific entity matched. Domain '{}' has {} entities - please be more specific.",
-                    domain,
-                    entity_count
+                    "No specific entity matched. Domain '{domain}' has {entity_count} entities - please be more specific."
                 ));
             }
         }
@@ -486,11 +643,11 @@ impl NLParser {
                 .collect();
             parts.push(targets.join(", "));
         } else if let Some(ref domain) = domain_hint {
-            parts.push(format!("all {}s", domain));
+            parts.push(format!("all {domain}s"));
         }
 
         for (key, value) in &result.parameters {
-            parts.push(format!("{}={}", key, value));
+            parts.push(format!("{key}={value}"));
         }
 
         parts.join(" ")
@@ -522,7 +679,7 @@ impl NLParser {
         };
 
         // Try to find the service using fuzzy matching first
-        let full_service_name = format!("{}.{}", domain, service_token);
+        let full_service_name = format!("{domain}.{service_token}");
         let action = if let MatchResult::Single(service_match) =
             self.matcher.find_service(&full_service_name, cache)
         {
@@ -700,6 +857,28 @@ pub struct ServiceTarget {
     pub area_id: Option<Vec<String>>,
 }
 
+/// Standard Home Assistant domains that have turn_on/turn_off services
+const STANDARD_DOMAINS: &[&str] = &[
+    "automation",
+    "button",
+    "camera",
+    "climate",
+    "cover",
+    "fan",
+    "humidifier",
+    "input_boolean",
+    "light",
+    "lock",
+    "media_player",
+    "remote",
+    "scene",
+    "script",
+    "siren",
+    "switch",
+    "vacuum",
+    "water_heater",
+];
+
 impl ParsedCommand {
     /// Convert to a service call
     pub fn to_service_call(&self) -> Result<ServiceCall> {
@@ -711,11 +890,21 @@ impl ParsedCommand {
 
         // Get domain from first target
         let first_entity = &self.targets[0].entity_id;
-        let domain = first_entity
+        let parsed_domain = first_entity
             .split('.')
             .next()
-            .ok_or_else(|| anyhow!("Invalid entity ID: {}", first_entity))?
+            .ok_or_else(|| anyhow!("Invalid entity ID: {first_entity}"))?
             .to_string();
+
+        // Check if this is a standard HA domain, otherwise fall back to homeassistant domain
+        // This handles helper entities like "spots.wohnzimmer" or "lights.living_room"
+        // which don't have their own domains but can be controlled via homeassistant.turn_on
+        let domain = if STANDARD_DOMAINS.contains(&parsed_domain.as_str()) {
+            parsed_domain
+        } else {
+            // Non-standard domain (likely a helper/group), use homeassistant domain
+            "homeassistant".to_string()
+        };
 
         // Check if action has domain-specific overrides
         let mappings = action_mappings();
@@ -740,7 +929,7 @@ impl ParsedCommand {
                     }
                 }
                 "value" => {
-                    // Could be brightness, temperature, etc. - context dependent
+                    // Could be brightness, temperature, volume, etc. - context dependent
                     if domain == "light" {
                         if let Some(val) = value.as_i64() {
                             if val <= 100 {
@@ -753,8 +942,24 @@ impl ParsedCommand {
                         }
                     } else if domain == "climate" {
                         data.insert("temperature".to_string(), value.clone());
+                    } else if domain == "media_player" {
+                        // Volume level is 0.0 to 1.0, convert from percentage
+                        if let Some(val) = value.as_i64() {
+                            let volume_level = (val as f64 / 100.0).clamp(0.0, 1.0);
+                            data.insert(
+                                "volume_level".to_string(),
+                                serde_json::json!(volume_level),
+                            );
+                        }
                     } else {
                         data.insert("value".to_string(), value.clone());
+                    }
+                }
+                "volume_pct" => {
+                    // Volume percentage for media_player (0-100 -> 0.0-1.0)
+                    if let Some(pct) = value.as_i64() {
+                        let volume_level = (pct as f64 / 100.0).clamp(0.0, 1.0);
+                        data.insert("volume_level".to_string(), serde_json::json!(volume_level));
                     }
                 }
                 _ => {
@@ -1117,5 +1322,56 @@ mod tests {
             .target
             .entity_id
             .contains(&"light.living_room".to_string()));
+    }
+
+    #[test]
+    fn test_parsed_command_nonstandard_domain_fallback() {
+        // Test that non-standard domains (like helper entities) fall back to homeassistant domain
+        let parsed = ParsedCommand {
+            original: "on spots.wohnzimmer".to_string(),
+            action: Some("turn_on".to_string()),
+            targets: vec![ParsedTarget {
+                entity_id: "spots.wohnzimmer".to_string(),
+                friendly_name: None,
+                match_type: "Exact".to_string(),
+                matched_input: "spots.wohnzimmer".to_string(),
+            }],
+            parameters: HashMap::new(),
+            confidence: 1.0,
+            interpretation: "turn_on spots.wohnzimmer".to_string(),
+            notes: vec![],
+            matched_area: None,
+        };
+
+        let call = parsed.to_service_call().unwrap();
+        // Should use homeassistant domain for non-standard entities
+        assert_eq!(call.domain, "homeassistant");
+        assert_eq!(call.service, "turn_on");
+        assert_eq!(call.target.entity_id, vec!["spots.wohnzimmer".to_string()]);
+    }
+
+    #[test]
+    fn test_parsed_command_standard_domains() {
+        // Test that standard domains are preserved
+        for domain in &["light", "switch", "cover", "fan", "climate"] {
+            let parsed = ParsedCommand {
+                original: format!("on {domain}.test"),
+                action: Some("turn_on".to_string()),
+                targets: vec![ParsedTarget {
+                    entity_id: format!("{domain}.test"),
+                    friendly_name: None,
+                    match_type: "Exact".to_string(),
+                    matched_input: format!("{domain}.test"),
+                }],
+                parameters: HashMap::new(),
+                confidence: 1.0,
+                interpretation: format!("turn_on {domain}.test"),
+                notes: vec![],
+                matched_area: None,
+            };
+
+            let call = parsed.to_service_call().unwrap();
+            assert_eq!(call.domain, *domain, "Domain {domain} should be preserved");
+        }
     }
 }

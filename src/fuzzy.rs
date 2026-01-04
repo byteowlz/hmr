@@ -432,16 +432,11 @@ impl FuzzyMatcher {
             }
             // Service name only match (if domain filter matches or not specified)
             if let Some(ref sp) = service_part {
-                if service.service.to_lowercase() == *sp {
-                    if domain_filter.is_none()
-                        || domain_filter.as_ref() == Some(&service.domain.to_lowercase())
-                    {
-                        return MatchResult::Single(Match::exact(
-                            service,
-                            input,
-                            &service.full_name,
-                        ));
-                    }
+                if service.service.to_lowercase() == *sp
+                    && (domain_filter.is_none()
+                        || domain_filter.as_ref() == Some(&service.domain.to_lowercase()))
+                {
+                    return MatchResult::Single(Match::exact(service, input, &service.full_name));
                 }
             }
         }
@@ -515,7 +510,7 @@ impl FuzzyMatcher {
     }
 
     /// Find matching domain from cache
-    pub fn find_domain<'a>(&self, input: &str, cache: &'a Cache) -> MatchResult<String> {
+    pub fn find_domain(&self, input: &str, cache: &Cache) -> MatchResult<String> {
         let input_lower = input.to_lowercase();
         let domains = cache.domains();
 
@@ -659,7 +654,7 @@ pub fn format_correction(original: &str, corrected: &str) -> String {
     if original.to_lowercase() == corrected.to_lowercase() {
         corrected.to_string()
     } else {
-        format!("{} -> {}", original, corrected)
+        format!("{original} -> {corrected}")
     }
 }
 

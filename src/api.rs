@@ -130,7 +130,7 @@ impl HassClient {
     /// Make a GET request to the API
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}/api{}", self.base_url, path);
-        log::debug!("GET {}", url);
+        log::debug!("GET {url}");
 
         let response = self
             .client
@@ -146,8 +146,8 @@ impl HassClient {
     /// Make a POST request to the API
     async fn post<T: DeserializeOwned>(&self, path: &str, body: &Value) -> Result<T> {
         let url = format!("{}/api{}", self.base_url, path);
-        log::debug!("POST {}", url);
-        log::trace!("POST body: {:?}", body);
+        log::debug!("POST {url}");
+        log::trace!("POST body: {body:?}");
 
         let response = self
             .client
@@ -166,7 +166,7 @@ impl HassClient {
     #[allow(dead_code)]
     async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}/api{}", self.base_url, path);
-        log::debug!("DELETE {}", url);
+        log::debug!("DELETE {url}");
 
         let response = self
             .client

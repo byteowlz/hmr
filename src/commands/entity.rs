@@ -113,7 +113,7 @@ async fn get(ctx: &RuntimeContext, entity_id: &str) -> Result<()> {
         println!("Attributes:");
         if let Some(attrs) = state.attributes.as_object() {
             for (key, value) in attrs {
-                println!("  {}: {}", key, value);
+                println!("  {key}: {value}");
             }
         }
         println!();
@@ -145,9 +145,7 @@ async fn set(
     if let Some(state_str) = state_input {
         if let Some((domain, service_name)) = map_state_to_service(entity_id, state_str) {
             log::debug!(
-                "Using service call {}.{} instead of direct state update",
-                domain,
-                service_name
+                "Using service call {domain}.{service_name} instead of direct state update"
             );
 
             let service_data = json!({ "entity_id": entity_id });
@@ -160,7 +158,7 @@ async fn set(
     }
 
     // Fall back to direct state update for non-controllable entities (sensors, etc.)
-    log::debug!("Using direct state update for {}", entity_id);
+    log::debug!("Using direct state update for {entity_id}");
     let result = client.set_state(entity_id, &data).await?;
     print_output(ctx, &result)?;
 
@@ -206,7 +204,7 @@ async fn history(ctx: &RuntimeContext, entity_id: &str, since: &str) -> Result<(
 
     output_for_format(ctx, &history, || {
         if history.is_empty() || history[0].is_empty() {
-            println!("No history found for {} in the last {}", entity_id, since);
+            println!("No history found for {entity_id} in the last {since}");
         } else {
             let rows: Vec<EntityRow> = history[0].iter().map(EntityRow::from).collect();
             print_table(ctx, &rows)?;
@@ -245,7 +243,7 @@ async fn watch(ctx: &RuntimeContext, entity_ids: &[String]) -> Result<()> {
                     .and_then(|v| v.as_str())
                     .unwrap_or("?");
 
-                println!("{}: {} -> {}", entity_id, old_state, new_state);
+                println!("{entity_id}: {old_state} -> {new_state}");
             }
         }
         Ok(true) // Continue watching

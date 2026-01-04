@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/byteowlz/hmr/schemas/config.schema.json",
+  "title": "hmr configuration",
+  "description": "Configuration schema for hmr - Home Assistant CLI",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for editor support"
+    },
+    "homeassistant": {
+      "type": "object",
+      "description": "Home Assistant connection settings",
+      "properties": {
+        "server": {
+          "type": "string",
+          "description": "Home Assistant server URL",
+          "examples": ["http://homeassistant.local:8123", "https://ha.example.com"]
+        },
+        "token": {
+          "type": "string",
+          "description": "Long-lived access token (prefer HASS_TOKEN env var for security)"
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Request timeout in seconds",
+          "default": 30,
+          "minimum": 1,
+          "maximum": 300
+        },
+        "insecure": {
+          "type": "boolean",
+          "description": "Skip SSL certificate verification (use for self-signed certs)",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "websocket": {
+      "type": "object",
+      "description": "WebSocket connection settings for watch commands",
+      "properties": {
+        "reconnect": {
+          "type": "boolean",
+          "description": "Auto-reconnect for watch commands",
+          "default": true
+        },
+        "reconnect_delay": {
+          "type": "integer",
+          "description": "Delay between reconnection attempts (seconds)",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 300
+        },
+        "max_reconnect_attempts": {
+          "type": "integer",
+          "description": "Maximum reconnection attempts (0 = infinite)",
+          "default": 0,
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "description": "Output formatting settings",
+      "properties": {
+        "format": {
+          "type": "string",
+          "description": "Default output format. 'auto' uses table for interactive terminals, json when piped",
+          "enum": ["auto", "json", "yaml", "table"],
+          "default": "auto"
+        },
+        "table_format": {
+          "type": "string",
+          "description": "Table rendering style",
+          "enum": ["simple", "ascii", "markdown"],
+          "default": "simple"
+        },
+        "no_headers": {
+          "type": "boolean",
+          "description": "Hide table headers",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "logging": {
+      "type": "object",
+      "description": "Logging configuration",
+      "properties": {
+        "level": {
+          "type": "string",
+          "description": "Log level",
+          "enum": ["trace", "debug", "info", "warn", "error"],
+          "default": "warn"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

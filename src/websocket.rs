@@ -84,7 +84,7 @@ impl WsClient {
         let ws_url = http_to_ws_url(server_url);
         let ws_url = format!("{}/api/websocket", ws_url.trim_end_matches('/'));
 
-        log::debug!("Connecting to WebSocket: {}", ws_url);
+        log::debug!("Connecting to WebSocket: {ws_url}");
 
         // Use string directly - tokio-tungstenite accepts &str
         let (ws_stream, _) = connect_async(&ws_url)
@@ -147,7 +147,7 @@ impl WsClient {
         let auth_required = client.receive().await?;
         match auth_required {
             WsMessage::AuthRequired { ha_version } => {
-                log::debug!("Connected to Home Assistant {}", ha_version);
+                log::debug!("Connected to Home Assistant {ha_version}");
             }
             _ => return Err(anyhow!("unexpected message, expected auth_required")),
         }
@@ -163,10 +163,10 @@ impl WsClient {
         let auth_response = client.receive().await?;
         match auth_response {
             WsMessage::AuthOk { ha_version } => {
-                log::info!("Authenticated with Home Assistant {}", ha_version);
+                log::info!("Authenticated with Home Assistant {ha_version}");
             }
             WsMessage::AuthInvalid { message } => {
-                return Err(anyhow!("Authentication failed: {}", message));
+                return Err(anyhow!("Authentication failed: {message}"));
             }
             _ => return Err(anyhow!("unexpected auth response")),
         }
@@ -370,7 +370,7 @@ pub async fn watch_events(
     let mut client = WsClient::connect(ctx).await?;
     let sub_id = client.subscribe_events(event_type).await?;
 
-    log::debug!("Subscribed to events with id {}", sub_id);
+    log::debug!("Subscribed to events with id {sub_id}");
 
     client.wait_for_subscription_confirmation(sub_id).await?;
 
@@ -405,7 +405,7 @@ pub async fn watch_entities(
     // Subscribe to state_changed events
     let sub_id = client.subscribe_events(Some("state_changed")).await?;
 
-    log::debug!("Subscribed to state_changed events with id {}", sub_id);
+    log::debug!("Subscribed to state_changed events with id {sub_id}");
 
     client.wait_for_subscription_confirmation(sub_id).await?;
 

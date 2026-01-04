@@ -35,11 +35,11 @@ pub async fn handle(client: &HassClient, cmd: &AgentCommand, ctx: &RuntimeContex
     // Use output_for_format to respect output format settings
     output::output_for_format(ctx, &response, || {
         // For human-readable output, just print the speech
-        println!("{}", speech_text);
+        println!("{speech_text}");
 
         // If there's a conversation ID, show it for follow-up
         if let Some(conv_id) = &response.conversation_id {
-            log::debug!("Conversation ID: {}", conv_id);
+            log::debug!("Conversation ID: {conv_id}");
         }
 
         Ok(())

@@ -142,20 +142,20 @@ fn context(ctx: &RuntimeContext) -> Result<()> {
                 if !ctx_data.last_entities.is_empty() {
                     println!("Last entities:");
                     for entity in &ctx_data.last_entities {
-                        println!("  {}", entity);
+                        println!("  {entity}");
                     }
                 }
 
                 if let Some(ref area) = ctx_data.last_area {
-                    println!("Last area: {}", area);
+                    println!("Last area: {area}");
                 }
 
                 if let Some(ref domain) = ctx_data.last_domain {
-                    println!("Last domain: {}", domain);
+                    println!("Last domain: {domain}");
                 }
 
                 if let Some(ref action) = ctx_data.last_action {
-                    println!("Last action: {}", action);
+                    println!("Last action: {action}");
                 }
             }
         },
@@ -208,7 +208,7 @@ fn stats(ctx: &RuntimeContext) -> Result<()> {
                 println!();
                 println!("Common corrections:");
                 for (typo, correction) in stats.correction_map.iter().take(10) {
-                    println!("  {} -> {}", typo, correction);
+                    println!("  {typo} -> {correction}");
                 }
             }
 
@@ -217,7 +217,7 @@ fn stats(ctx: &RuntimeContext) -> Result<()> {
                 println!();
                 println!("Most used entities:");
                 for (entity, count) in top {
-                    println!("  {} ({})", entity, count);
+                    println!("  {entity} ({count})");
                 }
             }
         }
@@ -243,7 +243,7 @@ fn compact(ctx: &RuntimeContext) -> Result<()> {
 
     if !ctx.global.quiet {
         if removed > 0 {
-            println!("Compacted history: removed {} old entries.", removed);
+            println!("Compacted history: removed {removed} old entries.");
         } else {
             println!("History is already compact.");
         }

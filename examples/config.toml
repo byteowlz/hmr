@@ -6,6 +6,8 @@
 #   HASS_TOKEN  - Authentication token (recommended for security)
 #   HMR__*      - Override any config (e.g., HMR__LOGGING__LEVEL=debug)
 
+"$schema" = "https://raw.githubusercontent.com/byteowlz/schemas/refs/heads/main/hmr/hmr.config.schema.json"
+
 [homeassistant]
 # Home Assistant server URL
 server = "http://homeassistant.local:8123"
