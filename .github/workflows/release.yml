@@ -38,6 +38,10 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-14
             archive: tar.gz
+          # Windows x86_64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
 
     steps:
       - uses: actions/checkout@v4
@@ -53,10 +57,18 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package (Unix)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           cd target/${{ matrix.target }}/release
           tar czvf ../../../hmr-${{ env.RELEASE_TAG }}-${{ matrix.target }}.tar.gz hmr
+
+      - name: Package (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          cd target/${{ matrix.target }}/release
+          7z a ../../../hmr-${{ env.RELEASE_TAG }}-${{ matrix.target }}.zip hmr.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -81,8 +93,8 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          find . -type f -name "*.tar.gz" -exec mv {} . \;
-          sha256sum *.tar.gz > checksums.txt
+          find . -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec mv {} . \;
+          sha256sum *.tar.gz *.zip > checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -91,9 +103,28 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/*.tar.gz
+            artifacts/*.zip
             artifacts/checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-scoop:
+    name: Publish to Scoop
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Scoop bucket
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          repository: byteowlz/scoop-bucket
+          event-type: update-manifest
+          client-payload: |
+            {
+              "name": "hmr",
+              "version": "${{ env.RELEASE_TAG }}",
+              "repo": "${{ github.repository }}"
+            }
 
   publish-homebrew:
     name: Publish to Homebrew

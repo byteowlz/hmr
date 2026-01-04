@@ -29,11 +29,43 @@ A slim, fast CLI for Home Assistant.
 
 ## Installation
 
+### Homebrew (macOS/Linux)
+
+```bash
+brew install byteowlz/tap/hmr
+```
+
+### Scoop (Windows)
+
+```bash
+scoop bucket add byteowlz https://github.com/byteowlz/scoop-bucket
+scoop install hmr
+```
+
+### AUR (Arch Linux)
+
+```bash
+# Binary package
+yay -S hmr-bin
+
+# Build from source
+yay -S hmr
+```
+
 ### From Source
 
 ```bash
 cargo install --path .
 ```
+
+### Pre-built Binaries
+
+Download from [GitHub Releases](https://github.com/byteowlz/hmr/releases):
+
+- Linux x86_64: `hmr-vX.X.X-x86_64-unknown-linux-gnu.tar.gz`
+- macOS Intel: `hmr-vX.X.X-x86_64-apple-darwin.tar.gz`
+- macOS Apple Silicon: `hmr-vX.X.X-aarch64-apple-darwin.tar.gz`
+- Windows x86_64: `hmr-vX.X.X-x86_64-pc-windows-msvc.zip`
 
 ### Development
 
@@ -266,6 +298,20 @@ cat complex_template.j2 | hmr template
 
 ## Development
 
+Use [just](https://github.com/casey/just) as the command runner:
+
+```bash
+just              # List available commands
+just build        # Build debug binary
+just build-release # Build release binary
+just test         # Run tests
+just lint         # Run clippy
+just fmt          # Format code
+just install      # Install to ~/.cargo/bin
+```
+
+Or use cargo directly:
+
 ```bash
 cargo fmt                          # Format code
 cargo check                        # Check for compiler warnings
@@ -273,17 +319,6 @@ cargo test                         # Run tests
 cargo clippy --all-targets         # Lint
 cargo run -- --help                # Run in development
 ```
-
-### Recent Changes
-
-- Natural language command parsing: "turn on kitchen light" now works
-- Fuzzy matching with typo correction for entity IDs, services, and domains
-- Entity caching system for faster lookups with automatic TTL management
-- Multi-device targeting: control multiple entities in a single command
-- Command history and context memory with accuracy statistics
-- Area management via WebSocket API (list, create, delete)
-- Security fixes: token protection, input validation, config file permissions
-- All 90 tests passing
 
 ## License
 
