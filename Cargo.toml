@@ -4,7 +4,7 @@ version = "0.4.1"
 edition = "2021"
 description = "A slim, fast CLI for Home Assistant"
 license = "MIT"
-repository = "https://github.com/example/hmr"
+repository = "https://github.com/byteowlz/hmr"
 keywords = ["home-assistant", "cli", "iot", "automation"]
 categories = ["command-line-utilities"]
 

@@ -1,0 +1,133 @@
+# tool.toml - hmr metadata for byteowlz.com/toolz/hmr
+
+"$schema" = "https://raw.githubusercontent.com/byteowlz/schemas/refs/heads/main/govnr/tool.schema.json"
+
+name = "hmr"
+title = "homer (hmr)"
+tagline = "A slim, fast CLI for Home Assistant"
+
+description = """
+Control your Home Assistant from the terminal. Manage entities, services, events, areas, devices, templates, and more with a single binary.
+
+Supports multiple output formats (JSON, YAML, table), fuzzy entity matching via local cache, natural language commands, shell completions, and full configuration via TOML config file with environment variable overrides.
+
+Built for both humans and AI agents. Use the CLI for quick control, pipe JSON for automation, or integrate via natural language commands.
+"""
+
+language = "rust"
+category = "toolz"
+version = "0.4.1"
+license = "MIT"
+
+# ============================================================================
+# Installation
+# ============================================================================
+
+[install]
+homebrew = "byteowlz/tap/hmr"
+aur = "hmr"
+aur_bin = "hmr-bin"
+cargo = "hmr"
+scoop = "byteowlz/hmr"
+
+# ============================================================================
+# Links
+# ============================================================================
+
+[links]
+github = "https://github.com/byteowlz/hmr"
+
+# ============================================================================
+# Features
+# ============================================================================
+
+[[features]]
+title = "Entity Management"
+description = "List, inspect, toggle, and control any Home Assistant entity with fuzzy matching"
+
+[[features]]
+title = "Natural Language Commands"
+description = "Run commands like 'turn on kitchen light' via the do subcommand"
+
+[[features]]
+title = "Multiple Output Formats"
+description = "JSON, YAML, and table output with customizable columns, sorting, and headers"
+
+[[features]]
+title = "Local Entity Cache"
+description = "Fast fuzzy matching against a local cache of entities for instant tab completion"
+
+[[features]]
+title = "Service & Event Control"
+description = "Call services, fire events, and render Jinja2 templates directly from the terminal"
+
+[[features]]
+title = "Area & Device Management"
+description = "Browse and manage areas and devices in your Home Assistant instance"
+
+# ============================================================================
+# Examples
+# ============================================================================
+
+[[examples]]
+title = "Quick Start"
+language = "bash"
+code = """
+# Check connection
+hmr info
+
+# List entities
+hmr entity list
+hmr entity get light.living_room
+
+# Control devices
+hmr do "turn on kitchen light"
+hmr entity toggle light.bedroom
+"""
+
+[[examples]]
+title = "JSON Pipelines"
+language = "bash"
+code = """
+# Get entities as JSON
+hmr entity list --json | jq '.[].entity_id'
+
+# Filter by area
+hmr entity list --json | jq 'map(select(.area == "kitchen"))'
+
+# Call a service
+hmr service call light.turn_on --data '{"entity_id": "light.desk"}'
+"""
+
+[[examples]]
+title = "Templates & Events"
+language = "bash"
+code = """
+# Render a Jinja2 template
+hmr template render "{{ states('sensor.temperature') }}"
+
+# Fire an event
+hmr event fire custom_event --data '{"key": "value"}'
+
+# View command history
+hmr history
+"""
+
+# ============================================================================
+# Media
+# ============================================================================
+
+[media]
+# icon = "assets/icon.svg"
+screenshot = "banner.png"
+
+# ============================================================================
+# Metadata
+# ============================================================================
+
+[meta]
+keywords = ["home-assistant", "cli", "iot", "automation", "smart-home", "hass"]
+platforms = ["linux", "macos", "windows"]
+related = ["mailz", "byt"]
+status = "stable"
+listed = true
