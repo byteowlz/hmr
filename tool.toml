@@ -119,6 +119,7 @@ hmr history
 
 [media]
 # icon = "assets/icon.svg"
+logo = "logo/hmr_logo_white.svg"
 screenshot = "banner.png"
 
 # ============================================================================
